@@ -204,7 +204,7 @@ class TemporalInfoGraph(nn.Module):
         self.out = out
 
         self.tempLayer1 = TemporalConvolution(c_in=self.c_in, c_out=self.c_out, kernel=self.tempKernel)
-        k2 = self.tempLayer1.convShape(dim_in)[1]
+        k2 = max(1, self.tempLayer1.convShape(dim_in)[1])
         self.specLayer1 = SpectralConvolution(c_in=self.c_out, c_out=self.spec_out)
         self.tempLayer2 = TemporalConvolution(c_in=self.spec_out, c_out = self.out, kernel = k2)
 
@@ -231,13 +231,25 @@ class TemporalInfoGraph(nn.Module):
                     Adjacency matrix. Dimension (nodes, nodes)
 
             Return:
-                torch.Tensor: Dimension (batch, features, nodes, time)
+                torch.Tensor, torch.Tensor: 
+                Dimensions: (nodes), (batch, features, nodes)
         """
+
+        X = X.type('torch.FloatTensor')
+        A = A.type('torch.FloatTensor')
 
         H = self.tempLayer1(X) # Returns: (batch, nodes, time, features)
         H1 = self.specLayer1(H, A) # Returns: (batch, nodes, time, features)
         Z = self.tempLayer2(H1.permute(0, 3, 1, 2)) # Expects: (batch, features, nodes, time)
+        Z = Z if self.activation is None else self.activation(Z)
+        Z = torch.squeeze(Z) # Remove "empty" dimensions, i.e. dim = 1
 
-        return Z if self.activation is None else self.activation(Z)
+        # Mean readout returns per batch entry, i.e. per graph a vector of size (nodes, 1)
+        global_Z = Z.mean(dim=1) # Simple mean readout
+        local_Z = Z
+
+        # Alternatively another fully connected feed forward network to encode the embedding
+
+        return global_Z, local_Z
     
 

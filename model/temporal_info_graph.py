@@ -91,7 +91,7 @@ class TemporalConvolution(nn.Module):
 
         nominatorH = (dim_in[0] + (2 * self.conv.padding[0]) - (self.conv.dilation[0] * 
                       (self.conv.kernel_size[0] - 1)) - 1)
-        
+
         nominatorW = (dim_in[1] + (2 * self.conv.padding[1]) - (self.conv.dilation[1] * 
                       (self.conv.kernel_size[1] - 1)) - 1)
 
@@ -241,15 +241,16 @@ class TemporalInfoGraph(nn.Module):
         H = self.tempLayer1(X) # Returns: (batch, nodes, time, features)
         H1 = self.specLayer1(H, A) # Returns: (batch, nodes, time, features)
         Z = self.tempLayer2(H1.permute(0, 3, 1, 2)) # Expects: (batch, features, nodes, time)
-        Z = Z if self.activation is None else self.activation(Z)
-        Z = torch.squeeze(Z) # Remove "empty" dimensions, i.e. dim = 1
+        Z = Z if self.activation is None else self.activation(Z)        
 
-        # Mean readout returns per batch entry, i.e. per graph a vector of size (nodes, 1)
-        global_Z = Z.mean(dim=1) # Simple mean readout
+        # Mean readout: Average each feature over all nodes --> dimension (features, 1)
+        # Average over dimension 2, dim 2 are the nodes (We want to aggregate the representation of each node!)
+        global_Z = Z.mean(dim=2) # Simple mean readout
         local_Z = Z
 
         # Alternatively another fully connected feed forward network to encode the embedding
 
-        return global_Z, local_Z
+        # Remove "empty" dimensions, i.e. dim = 1
+        return torch.squeeze(global_Z), torch.squeeze(local_Z)
     
 

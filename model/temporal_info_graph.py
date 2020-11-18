@@ -251,6 +251,6 @@ class TemporalInfoGraph(nn.Module):
         # Alternatively another fully connected feed forward network to encode the embedding
 
         # Remove "empty" dimensions, i.e. dim = 1
-        return torch.squeeze(global_Z), torch.squeeze(local_Z)
+        return torch.squeeze(global_Z, dim=-1), torch.squeeze(local_Z, dim=-1)
     
 

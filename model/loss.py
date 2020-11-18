@@ -8,7 +8,7 @@ import torch.nn.functional as F
 import math
 
 
-def jensen_shannon_mi(enc_local, enc_global):
+def jensen_shannon_mi(enc_local: torch.Tensor, enc_global:torch.Tensor):
     """ Jensen-Shannon mutual information estimate.
 
         Parameters:
@@ -24,7 +24,7 @@ def jensen_shannon_mi(enc_local, enc_global):
     """
 
     num_graphs = enc_global.shape[0]
-    num_nodes = enc_local.shape[2]
+    num_nodes = enc_local.shape[-1]
     
     #################
     # Discriminator #
@@ -41,7 +41,6 @@ def jensen_shannon_mi(enc_local, enc_global):
     ############
     yhat_matr = torch.flatten(yhat).repeat(num_graphs,1,1).reshape(num_graphs, num_graphs, num_nodes)
 
-    
     # Create unit matrix to mask positive and negative samples
     unit = torch.eye(num_graphs, num_graphs).reshape((num_graphs, num_graphs, 1))
     unit = unit.repeat(1, 1, num_nodes)
@@ -49,10 +48,10 @@ def jensen_shannon_mi(enc_local, enc_global):
     pos_samples = yhat_matr[unit == 1].reshape(num_graphs, num_nodes) # equivalent to torch.diagonal(yhat_matr)
     neg_samples = yhat_matr[unit == 0].reshape(num_graphs, (num_graphs-1)*num_nodes) # Checked!
 
-
-    E_pos = get_positive_expectation(pos_samples, average=False).sum(dim=1)
+    # Batch loss, i.e. aggregate and normalize
+    E_pos = get_positive_expectation(pos_samples, average=False).sum()
     E_pos = E_pos / num_nodes
-    E_neg = get_negative_expectation(neg_samples, average=False).sum(dim=1)
+    E_neg = get_negative_expectation(neg_samples, average=False).sum()
     E_neg = E_neg / (num_nodes * (num_graphs - 1))
 
     return E_neg - E_pos

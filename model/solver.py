@@ -161,6 +161,7 @@ class Solver():
         """ String representation
         """
         representation = f"Solver (model: {self.model.__class__.__name__})\n"
+        representation += f"# Model Parameters: {self.model.paramters}\n"
             
         if len(self.train_losses) == 0:
             # Not trained yet!

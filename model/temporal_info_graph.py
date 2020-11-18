@@ -10,6 +10,8 @@ import torch.nn as nn
 import numpy as np
 from math import floor
 
+from torchsummary import summary
+
 class TemporalConvolution(nn.Module):
     """ Building block for doing temporal convolutions.
 
@@ -202,6 +204,7 @@ class TemporalInfoGraph(nn.Module):
         self.spec_out = spec_out
         self.tempKernel = tempKernel
         self.out = out
+        self.dim_in = dim_in 
 
         self.tempLayer1 = TemporalConvolution(c_in=self.c_in, c_out=self.c_out, kernel=self.tempKernel)
         k2 = max(1, self.tempLayer1.convShape(dim_in)[1])
@@ -253,4 +256,7 @@ class TemporalInfoGraph(nn.Module):
         # Remove "empty" dimensions, i.e. dim = 1
         return torch.squeeze(global_Z, dim=-1), torch.squeeze(local_Z, dim=-1)
     
-
+    @property
+    def paramters(self):
+        # return(summary(self, (self.c_in, self.dim_in[0], self.dim_in[1])))
+        return f"Parameters {sum(p.numel() for p in self.parameters())}"

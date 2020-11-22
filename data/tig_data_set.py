@@ -5,6 +5,9 @@
     @author: jhuthmacher
 """
 import json
+from os import listdir
+from os.path import isfile, join, exists
+from tqdm import tqdm
 
 import numpy as np
 import torch
@@ -16,11 +19,17 @@ import networkx as nx
 from data import KINECT_ADJACENCY
 
 
+def files_exist(files):
+    return len(files) != 0 and all(exists(f) for f in files)
+
+def file_exist(file):
+    return exists(file)
+
 class TIGDataset(InMemoryDataset):
     """ PyTorch data set to return batches of dynamic graphs.
     """
 
-    def __init__(self, path = "./.data/kinetic/"):
+    def __init__(self, path = "./.data/kinetic/", val_dir=None, train_dir=None, test_dir=None, verbose=False, lim=-1):
         """ Initialization of the data set.
 
             self.processed_paths = [processed_file_dir + processed_file_names]
@@ -29,23 +38,75 @@ class TIGDataset(InMemoryDataset):
                 path: str
                     Path the folder with the data.
         """
-        super(TIGDataset, self).__init__(path)
+        self.val_dir = val_dir
+        self.train_dir = train_dir
+        self.test_dir = test_dir
+        self.path = path
+        self.lim = lim
+
+        self.verbose = verbose
+
+        super().__init__(path)
 
         self.data, self.slices = torch.load(self.processed_paths[0])
+    
+    @property
+    def raw_dir(self):
+        return join(self.root, '')
+    
+    @property
+    def raw_paths(self):
+        r"""The filepaths to find in order to skip the download."""
+        # files = to_list(self.raw_file_names)
+        return ([join(self.raw_dir, f) for f in self.raw_file_names[0]] + 
+            [join(self.raw_dir, f) for f in self.raw_file_names[1]] +
+            [join(self.raw_dir, f) for f in self.raw_file_names[2]] +
+            [join(self.raw_dir, f) for f in self.raw_file_names[3]])
+            
 
     @property
     def raw_file_names(self):
         """ Property defining the files that will be loaded.
-        """
-        # EXAMPLE FILES.
-        return ['__lt03EF4ao.json', '__NrybzYzUg.json', '__PYrzYbzKE.json']
+        """        
+        val_files = []
+        train_files = []
+        test_files =[]
+        all_files = []
+
+        if self.val_dir is not None:
+            path = self.path + self.val_dir
+            val_files += [join(self.val_dir, f) for f in listdir(path) if isfile(join(path, f))]
+        
+        if self.train_dir is not None:
+            path = self.path + self.train_dir
+            test_files += [join(self.train_dir, f) for f in listdir(path) if isfile(join(path, f))]
+        
+        if self.test_dir is not None:
+            path = self.path + self.test_dir
+            test_files += [join(self.test_dir, f) for f in listdir(path) if isfile(join(path, f))]
+
+        if self.val_dir is None and self.train_dir is None and self.test_dir is None:
+            all_files += [f for f in listdir(self.path) if isfile(join(self.path, f))]
+        
+        return val_files, train_files, test_files, all_files
 
     @property
     def processed_file_names(self):
         """ Name of the output name after the data is processed.
         """
-        # EXAMPLE
-        return ['data.pt']
+        file_names = []
+
+        if self.val_dir is not None:
+            file_names += ['tig_val.pt']
+        if self.train_dir is not None:
+            file_names += ['tig_train.pt']
+        if self.test_dir is not None:
+            file_names += ['tig_test.pt']
+
+        if (self.val_dir is None and self.train_dir is None and self.test_dir is None):
+            file_names += ['tig_data.pt']
+    
+        return ['tig_val.pt', 'tig_train.pt', 'tig_test.pt',  'tig_data.pt'] #file_names
 
     def download(self):
         """ Not used yet! Maybe later direct connection to DB here.
@@ -70,40 +131,51 @@ class TIGDataset(InMemoryDataset):
 
 
         """
-        data_list = []
+        
+        for l, file_list in enumerate(self.raw_file_names):
+            data_list = []
 
-        for i, json_file in enumerate(self.raw_paths):
-            with open(json_file) as f:
-                data = json.load(f)
+            if file_exist(self.processed_paths[l]):
+                continue
 
-                X = []
-                edges=[]
-                y = data["label_index"]
+            for i, json_file in enumerate(tqdm(file_list, disable=(not self.verbose), desc=f"File list {l}: ")):
+                json_file = self.path + json_file
+                if self.lim > 0 and self.lim < i:
+                    break
+                try:
+                    with open(json_file) as f:
+                        data = json.load(f)
+                        X = []
+                        edges=[]
+                        y = data["label_index"]
 
-                for i, frame in enumerate(data["data"]):
-                    for person in frame["skeleton"]:
-                        feature_matrix = []
-                        for j in range(0, len(person["pose"])-1, 2):
-                            feature_matrix.append([person["pose"][j], person["pose"][j+1] * -1])
+                        for k, frame in enumerate(data["data"]):
+                            for person in frame["skeleton"]:
+                                feature_matrix = []
+                                for j in range(0, len(person["pose"])-1, 2):
+                                    feature_matrix.append([person["pose"][j], person["pose"][j+1] * -1])
 
-                        break # Only consider the first person for now!
+                                break # Only consider the first person for now!
 
-                    X.append(feature_matrix)
+                            X.append(feature_matrix)
 
-                    # List of index tuples, i.e. [from, to]. Convert after with .t().contiguous()!
-                    G = nx.Graph(KINECT_ADJACENCY)
-                    edge_index = torch.tensor(list(G.edges)).t().contiguous()
-                    edges.append(edge_index)
+                            # List of index tuples, i.e. [from, to]. Convert after with .t().contiguous()!
+                            G = nx.Graph(KINECT_ADJACENCY)
+                            edge_index = torch.tensor(list(G.edges)).t().contiguous()
+                            edges.append(edge_index)
 
-                    if i == 200:
-                        break # unify the number of frames
+                            if i == 200:
+                                break # unify the number of frames
 
-            # Each data point corresponds to a list of graphs.
-            data = SequenceData(edge_index=edges, x=torch.tensor(X), y=y, frames=len(data["data"]))
-            data_list.append(data)
+                    # Each data point corresponds to a list of graphs.
+                    data = SequenceData(edge_index=edges, x=torch.tensor(X), y=y, frames=len(data["data"]))
+                    data_list.append(data)
+                except Exception as e:
+                    print(e, json_file)
 
-        data, slices = self.collate(data_list)
-        torch.save((data, slices), self.processed_paths[0])
+            if len(data_list) > 0:
+                data, slices = self.collate(data_list)
+                torch.save((data, slices), self.processed_paths[l])
 
 
 class SequenceData(Data):

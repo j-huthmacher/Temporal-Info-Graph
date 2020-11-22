@@ -12,6 +12,9 @@ from math import floor
 
 from torchsummary import summary
 
+import config.config as cfg
+from config.config import log
+
 class TemporalConvolution(nn.Module):
     """ Building block for doing temporal convolutions.
 
@@ -219,7 +222,6 @@ class TemporalInfoGraph(nn.Module):
         else:
             self.activation = None
 
-
     def forward(self, X: torch.Tensor, A: torch.Tensor):
         """ Forward function of the temporl info graph model.
 
@@ -255,7 +257,7 @@ class TemporalInfoGraph(nn.Module):
 
         # Remove "empty" dimensions, i.e. dim = 1
         return torch.squeeze(global_Z, dim=-1), torch.squeeze(local_Z, dim=-1)
-    
+
     @property
     def paramters(self):
         # return(summary(self, (self.c_in, self.dim_in[0], self.dim_in[1])))

@@ -43,6 +43,7 @@ class TIGDataset(InMemoryDataset):
         self.test_dir = test_dir
         self.path = path
         self.lim = lim
+        self.dim = None
 
         self.verbose = verbose
 
@@ -58,10 +59,11 @@ class TIGDataset(InMemoryDataset):
     def raw_paths(self):
         r"""The filepaths to find in order to skip the download."""
         # files = to_list(self.raw_file_names)
-        return ([join(self.raw_dir, f) for f in self.raw_file_names[0]] + 
-            [join(self.raw_dir, f) for f in self.raw_file_names[1]] +
-            [join(self.raw_dir, f) for f in self.raw_file_names[2]] +
-            [join(self.raw_dir, f) for f in self.raw_file_names[3]])
+        paths = []
+        for path in self.raw_file_names:
+            paths = [join(self.raw_dir, f) for f in path]
+
+        return path
             
 
     @property
@@ -73,22 +75,24 @@ class TIGDataset(InMemoryDataset):
         test_files =[]
         all_files = []
 
+        files = []
+
         if self.val_dir is not None:
             path = self.path + self.val_dir
-            val_files += [join(self.val_dir, f) for f in listdir(path) if isfile(join(path, f))]
+            files.append([join(self.val_dir, f) for f in listdir(path) if isfile(join(path, f))])
         
         if self.train_dir is not None:
             path = self.path + self.train_dir
-            test_files += [join(self.train_dir, f) for f in listdir(path) if isfile(join(path, f))]
+            files.append([join(self.train_dir, f) for f in listdir(path) if isfile(join(path, f))])
         
         if self.test_dir is not None:
             path = self.path + self.test_dir
-            test_files += [join(self.test_dir, f) for f in listdir(path) if isfile(join(path, f))]
+            files.append([join(self.test_dir, f) for f in listdir(path) if isfile(join(path, f))])
 
         if self.val_dir is None and self.train_dir is None and self.test_dir is None:
-            all_files += [f for f in listdir(self.path) if isfile(join(self.path, f))]
+            files.append([f for f in listdir(self.path) if isfile(join(self.path, f))])
         
-        return val_files, train_files, test_files, all_files
+        return files#val_files, train_files, test_files, all_files
 
     @property
     def processed_file_names(self):
@@ -106,7 +110,7 @@ class TIGDataset(InMemoryDataset):
         if (self.val_dir is None and self.train_dir is None and self.test_dir is None):
             file_names += ['tig_data.pt']
     
-        return ['tig_val.pt', 'tig_train.pt', 'tig_test.pt',  'tig_data.pt'] #file_names
+        return file_names #['tig_val.pt', 'tig_train.pt', 'tig_test.pt',  'tig_data.pt'] #file_names
 
     def download(self):
         """ Not used yet! Maybe later direct connection to DB here.
@@ -140,8 +144,11 @@ class TIGDataset(InMemoryDataset):
 
             for i, json_file in enumerate(tqdm(file_list, disable=(not self.verbose), desc=f"File list {l}: ")):
                 json_file = self.path + json_file
+
                 if self.lim > 0 and self.lim < i:
                     break
+                
+
                 try:
                     with open(json_file) as f:
                         data = json.load(f)
@@ -164,8 +171,10 @@ class TIGDataset(InMemoryDataset):
                             edge_index = torch.tensor(list(G.edges)).t().contiguous()
                             edges.append(edge_index)
 
-                            if i == 200:
+                            if k == 150:
+                                self.dim = k
                                 break # unify the number of frames
+                           
 
                     # Each data point corresponds to a list of graphs.
                     data = SequenceData(edge_index=edges, x=torch.tensor(X), y=y, frames=len(data["data"]))

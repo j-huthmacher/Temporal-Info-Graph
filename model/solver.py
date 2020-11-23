@@ -14,14 +14,23 @@ from data import KINECT_ADJACENCY
 
 from model.loss import jensen_shannon_mi
 
+#########################
+# Local/Tracking Config #
+#########################
+import config.config as cfg
+from config.config import log
 
-class Solver():
+from sacred import Experiment
+
+
+class Solver(object):
     """ The Solver class implement several functions to provide a common training and testing procedure.
     """
 
     def __init__(self, model: nn.Module, dataloader: [DataLoader],
                  optimizer: torch.optim.Optimizer = None,
-                 loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = None):
+                 loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = None,
+                 train_cfg = {}, test_cfg = {}):
         """ Initialization of the Solver.
 
             Paramters:
@@ -40,9 +49,28 @@ class Solver():
                     Optimzer used to train the model.
                 loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
                     Function calculating the loss of the model.
-        """        
+        """
+        #######################
+        # Train configuration #
+        #######################
+        self.train_cfg = {
+            "n_epochs": 10,
+            "log_nth": 0,
+            "learning_rate": 1e-4,
+            "verbose": False
+        }
+        self.train_cfg = {**self.train_cfg, **train_cfg}
+
+        ######################
+        # Test configuration #
+        ######################
+        self.test_cfg = {
+            "n_batches": 1,
+        }
+        self.test_cfg = {**self.test_cfg, **test_cfg}
+
         self.model = model
-        self.optimizer = optim.Adam(model.parameters(), lr=0.0001) if optimizer is None else optimizer
+        self.optimizer = optim.Adam(model.parameters(), lr=self.train_cfg["learning_rate"]) if optimizer is None else optimizer
         self.loss_fn = jensen_shannon_mi if loss_fn is None else loss_fn
 
         self.train_loader = dataloader[0]
@@ -54,23 +82,10 @@ class Solver():
         self.val_losses = []
         self.test_losses = []
 
-        #######################
-        # Train configuration #
-        #######################
-        self.train_cfg = {
-            "n_epochs": 10,
-            "log_nth": 0,
-            "verbose": False
-        }
+        
 
-        ######################
-        # Test configuration #
-        ######################
-        self.test_cfg = {
-            "n_batches": 1,
-        }
 
-    def train(self, train_config: dict = None):
+    def train(self, train_config: dict = None, track = None):
         """ Training method from the solver.
 
             Paramters:
@@ -85,7 +100,7 @@ class Solver():
         #########################
         # Training & Validation #
         #########################
-        for epoch in tqdm(range(self.train_cfg["n_epochs"]),
+        for self.epoch in tqdm(range(self.train_cfg["n_epochs"]),
                           disable=(not self.train_cfg["verbose"]),
                           desc='Epochs'):
             self.train_batch_losses = []
@@ -95,8 +110,7 @@ class Solver():
             # Train #
             #########
             self.model.train()
-            for _, (batch_) in tqdm(enumerate(self.train_loader), disable=True):
-                
+            for self.batch, batch_ in enumerate(tqdm(self.train_loader, total=len(self.train_loader), disable=True)):
                 # Build plain batches
                 batch_x = []
                 for graph in range(batch_.num_graphs):
@@ -115,6 +129,9 @@ class Solver():
                 self.optimizer.step()
                 self.optimizer.zero_grad()
 
+                if callable(track):
+                    track("training")
+
             if self.val_loader is not None:
                 # For disabling the gradient calculation -> Performance advantages
                 with torch.no_grad():
@@ -122,7 +139,7 @@ class Solver():
                     # Validate #
                     ############
                     self.model.eval()
-                    for _, (batch_) in tqdm(enumerate(self.val_loader), disable=True):
+                    for self.batch, (batch_) in enumerate(tqdm(self.val_loader, disable=True)):
 
                         # Build plain batches
                         batch_x = []
@@ -137,26 +154,22 @@ class Solver():
                         loss = self.loss_fn(lcl, gbl)
 
                         self.val_batch_losses.append(torch.squeeze(loss).item())
+                        
+                        if callable(track):
+                            track("validation")
 
-            self.track(mode="train")
+            self.train_losses.append(np.mean(self.train_batch_losses))
+            self.val_losses.append(np.mean(self.val_batch_losses))
+
+            if callable(track):
+                track("epoch")
             
+ 
     def test(self, test_config: dict = None):
         """ Function to test a model, i.e. calculate evaluation metrics.
         """
         raise NotImplementedError
     
-    def track(self, mode: str):
-        """ Function to track the results.
-        """
-        if mode == "train":
-            self.train_losses.append(np.mean(self.train_batch_losses))
-            self.val_losses.append(np.mean(self.val_batch_losses))
-        elif mode == "test":
-            pass
-        else:
-            raise ValueError("Mode has to be in ['train', 'test']")
-
-
     def __repr__(self):
         """ String representation
         """

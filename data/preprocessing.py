@@ -9,6 +9,7 @@ import pandas as pd
 import pymongo
 from os import listdir
 from os.path import isfile, join
+from tqdm import tqdm
 
 def create_skeleton(folder: str, to_mongoDB: bool = False, lim: int = None, cat: str = None):
     """ Create "real" skeleton from the kinect data.
@@ -36,7 +37,7 @@ def create_skeleton(folder: str, to_mongoDB: bool = False, lim: int = None, cat:
 
     data = []
     
-    for i, filename in enumerate(listdir(folder)):
+    for i, filename in enumerate(tqdm(listdir(folder))):
         if lim is not None and i > lim:
             break
 
@@ -71,20 +72,21 @@ def create_skeleton(folder: str, to_mongoDB: bool = False, lim: int = None, cat:
         # Build data frame
         data.append({
             "frames": skel_data,
-            "label": instance["label"][0],
-            "id": filename,
+            "label": instance["label"][0] if len(instance["label"]) > 0 else "",
+            "_id": filename,
             "cat": cat
         })
 
         if to_mongoDB:
             db_url = ""
-            with open("../.mongoURL") as f:
+            with open(".mongoURL") as f:
                 db_url = f.readlines()       
 
             client = pymongo.MongoClient(db_url)
 
             collection = client.temporal_info_graph["kinect-skeleton"]
-            collection.insert_one(data[-1])
+            # collection.insert_one(data[-1])
+            collection.update({"_id": data[-1]["_id"]}, data[-1], upsert=True)
 
     return pd.DataFrame(data)
 

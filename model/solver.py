@@ -115,7 +115,7 @@ class Solver(object):
                 batch_x = []
                 for graph in range(batch_.num_graphs):
                     # Per graph extract feature matrix from batch
-                    batch_x.append(torch.tensor(batch_.x[batch_.batch[batch_.batch==graph]]))
+                    batch_x.append(batch_.x[batch_.batch[batch_.batch==graph]].clone().detach())
                 
                 batch_x = torch.stack(batch_x).permute(0,3,2,1)
                 
@@ -150,7 +150,7 @@ class Solver(object):
                         batch_x = []
                         for graph in range(batch_.num_graphs):
                             # Per graph extract feature matrix from batch
-                            batch_x.append(torch.tensor(batch_.x[batch_.batch[batch_.batch==graph]]))
+                            batch_x.append(batch_.x[batch_.batch[batch_.batch==graph]].clone().detach())
                         
                         batch_x = torch.stack(batch_x).permute(0,3,2,1)
                         

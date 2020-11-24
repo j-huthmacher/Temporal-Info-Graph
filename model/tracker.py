@@ -17,6 +17,7 @@ class Tracker():
         """
         """
         if ex_name is not None:
+            self.ex_name = ex_name
             self.ex = Experiment(ex_name, interactive= interactive)
             self.ex.observers.append(MongoObserver(url=db_url, db_name=db))
             self.observer = self.ex.observers[0]
@@ -27,6 +28,10 @@ class Tracker():
             # Assign model config
             self.__dict__ = {**self.__dict__, **config}
             self.run = None
+    
+    @property
+    def model(self):
+        return self.solver.model
           
     def track(self, mode):
         """ General track function that distributes the task depending on the mode.
@@ -54,7 +59,7 @@ class Tracker():
             buffer = io.BytesIO()
             torch.save(self.solver.model, buffer)
 
-            self.add_artifact(buffer.getvalue(), name="model")
+            self.add_artifact(buffer.getvalue(), name=f"{self.ex_name}.pt")
 
 
         elif mode == "epoch":
@@ -152,8 +157,11 @@ class Tracker():
         """
         if self.id is None:
             raise ValueError("Experiment ID is not set!")
+        
+        # self.run_collection.update({'_id' : self.id}, {'$set' : {f'config.{name}':  cfg} })
 
-        self.run_collection.update({'_id' : self.id}, {'$set' : {f'config.{name}':  cfg} })
+        self.observer.run_entry["config"][name] = cfg
+        self.observer.save()
 
     def add_artifact(self, file: bytes, name: str):
         """ Tracks an object.

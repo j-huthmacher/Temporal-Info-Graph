@@ -45,8 +45,6 @@ class TIGDataset(InMemoryDataset):
         self.lim = lim
         self.dim = None
 
-        self.num_classes = 399
-
         self.verbose = verbose
 
         super().__init__(path)

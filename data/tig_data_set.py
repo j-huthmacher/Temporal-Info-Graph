@@ -11,32 +11,187 @@ from tqdm import tqdm
 
 import numpy as np
 import torch
-from torch_geometric.data import InMemoryDataset, Data
+from torch_geometric.data import InMemoryDataset, Data, Dataset
 from torch_geometric.utils import from_networkx
 
 import networkx as nx 
 
 from data import KINECT_ADJACENCY
+from config.config import log
+
+##########################
+# Custom DataSet Objects #
+##########################
+
+class TIGDataset(Dataset):
+    """ TIG data set for data that is too large for the memory.
+    """
+    def __init__(self, paths: [str], output: str = "./", num_chunks: int = 15, verbose: bool = False):
+        """ Initialization of the TIG DataSet
+
+            Important: The number of output files may deviate from the number of chunks.
+            The algorithm trys to equally distribute the items to the output files, i.e. 
+            it could happen that the number of output files is less than the number of chunks.
+            In this case all data was processed and it is stored in the files, i.e. 
+            it doesn't mean some data is missing.
+
+            Paramters:
+                paths: [str]
+                    List of paths to the data directory. Hint: The algorithm reads out each file
+                    the directories.
+                output: str
+                    Path to the output directory where the output files are located.
+                num_chunks: int
+                    Number of chunks in which the data is splitted. Important: The algorithm
+                    distributes the data equally, i.e. we may have less output files than 
+                    the number of chunks.
+                verbose: bool
+                    Determines if the progress is visualized.
+        """
+        self.num_chunks = num_chunks
+        self.paths = paths
+
+        self.verbose = verbose
+
+        super().__init__(output)
+
+    @property
+    def raw_paths(self):
+        """ The filepaths to find in order to skip the download.
+        """
+        paths = []
+        for path in self.raw_dir:
+            paths += [join(path, f) for f in listdir(path) if isfile(join(path, f))]
+        return paths
 
 
-def files_exist(files):
-    return len(files) != 0 and all(exists(f) for f in files)
+    @property
+    def raw_dir(self):
+        """ The directories of the raw data.
+        """
+        return self.paths
+    
 
-def file_exist(file):
-    return exists(file)
+    @property
+    def raw_file_names(self):
+        """ The raw file names.
+        """        
+        files = []
+        for path in self.paths:
+            files += [f for f in listdir(path) if isfile(join(path, f))]
+        
+        return files
 
-class TIGDataset(InMemoryDataset):
-    """ PyTorch data set to return batches of dynamic graphs.
+    @property
+    def processed_file_names(self):
+        """ Name of the output name after the data is processed.
+        """
+        # Makes sure that the data is equally distributed among the output files.
+        num_chunks = int(len(self.raw_file_names) // np.ceil(len(self.raw_file_names)/self.num_chunks))
+        file_names = [f"kinetic_skeleton_data_{i}.pt" for i in range(num_chunks)]
+        return file_names
+
+    def download(self):
+        """ Not used yet! Maybe later direct connection to DB here.
+        """
+        pass
+
+    def process(self):
+        """ Read as well as process local data and creat output data object.
+
+            IMPORTANT: For the first try we only use the first person in a frame!
+            Consider multiple persons need a more complex concept.
+
+            IMPORTANT: We stop after n frames and ignore the remaining frames, because 
+            the number of frames is not unified and it is not possible to create 
+            appropriate batches, where the data have different sizes.
+
+            Utilizes networkx to create the edge_index from global adjacency.
+        """        
+        data_list = []  # Will store the data for one output file.
+        file_num = 0  # Output file index.
+        
+        # Iterate over all "raw" files
+        for i, json_file in enumerate(tqdm(self.raw_paths, disable=(not self.verbose), desc=f"Files processed: ")):
+
+            # After a output file reached the limit of data instances in it, write it to the disk and continue with the next file/chunk.
+            if i != 0 and i % np.ceil(len(self.raw_file_names)/len(self.processed_paths)) == 0:                
+                torch.save(data_list, self.processed_paths[file_num])
+                file_num += 1
+                data_list = []
+                    
+            try:
+                with open(json_file) as f:
+                    data = json.load(f)
+                    X = []
+                    edges=[]
+                    y = data["label_index"]
+
+                    for k, frame in enumerate(data["data"]):
+                        for person in frame["skeleton"]:
+                            feature_matrix = []
+                            for j in range(0, len(person["pose"])-1, 2):
+                                feature_matrix.append([person["pose"][j], person["pose"][j+1] * -1])
+
+                            break # Only consider the first person for now!
+
+                        X.append(feature_matrix)
+
+                        # List of index tuples, i.e. [from, to]. Convert after with .t().contiguous()!
+                        G = nx.Graph(KINECT_ADJACENCY)
+                        edge_index = torch.tensor(list(G.edges)).t().contiguous()
+                        edges.append(edge_index)
+
+                        if k == 150:
+                            self.dim = k
+                            break # unify the number of frames
+                            
+                # Each data point corresponds to a list of graphs.
+                data = SequenceData(edge_index=edges, x=torch.tensor(X), y=y, frames=len(data["data"]))
+                data_list.append(data)
+            except Exception as e:
+                log.eror(e, json_file)
+
+        # Store the last chunk
+        torch.save(data_list, self.processed_paths[file_num])
+
+    def len(self):
+        return len(self.processed_file_names)
+
+    def get(self, idx):
+        data = torch.load(self.processed_paths[idx])
+        return data
+
+
+class TIGInMemoryDataset(InMemoryDataset):
+    """ TIG data set for in memory data loading, i.e. for data that fits into the memory.
+
+        Not recommended to use! Use TIGDataset instead.
     """
 
-    def __init__(self, path = "./.data/kinetic/", val_dir=None, train_dir=None, test_dir=None, verbose=False, lim=-1):
+    def __init__(self, path: str = "./.data/kinetic/", val_dir: str = None, train_dir: str = None, test_dir: str = None,
+                 verbose: bool = False, lim: int = -1):
         """ Initialization of the data set.
 
             self.processed_paths = [processed_file_dir + processed_file_names]
 
+            Hint: If no one of val_dir, train_dir, and test_dir is provided the
+            algorithm reads out each file from the folder given by the path.
+
             Parameters:
                 path: str
-                    Path the folder with the data.
+                    Path the folder containing the data.
+                val_dir: str
+                    Directory of the validation data.
+                train_dir: str
+                    Directory of the train data.
+                test_dir: str
+                    Directory of the test data.
+                verbose: bool
+                    Determines if the progress is printed.
+                lim: int
+                    Determines a limit, for the case you only want process
+                    some parts of the data, e.g. for testing.
         """
         self.val_dir = val_dir
         self.train_dir = train_dir
@@ -131,9 +286,6 @@ class TIGDataset(InMemoryDataset):
             Next, the data has to be brought into the right format. I.e. extract the feature matrices per
             frame.
             Utilizes networkx to create the edge_index from global adjacency.
-
-
-
         """
         
         for l, file_list in enumerate(self.raw_file_names):
@@ -186,6 +338,10 @@ class TIGDataset(InMemoryDataset):
                 torch.save((data, slices), self.processed_paths[l])
 
 
+######################
+# Custom Data Object #
+######################
+
 class SequenceData(Data):
     """ Custom data object to handle sequences of graphs.
     """
@@ -219,3 +375,13 @@ class SequenceData(Data):
             return self.x[0].size(0) + self.frames
         else:
             return super(SequenceData, self).__inc__(key, value)
+
+####################
+# Helper Functions #
+####################
+
+def files_exist(files):
+    return len(files) != 0 and all(exists(f) for f in files)
+
+def file_exist(file):
+    return exists(file)

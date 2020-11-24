@@ -45,6 +45,8 @@ class TIGDataset(InMemoryDataset):
         self.lim = lim
         self.dim = None
 
+        self.num_classes = 399
+
         self.verbose = verbose
 
         super().__init__(path)
@@ -148,7 +150,6 @@ class TIGDataset(InMemoryDataset):
                 if self.lim > 0 and self.lim < i:
                     break
                 
-
                 try:
                     with open(json_file) as f:
                         data = json.load(f)

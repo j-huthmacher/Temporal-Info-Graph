@@ -8,7 +8,7 @@ import torch.nn.functional as F
 import math
 
 
-def jensen_shannon_mi(enc_local: torch.Tensor, enc_global:torch.Tensor):
+def jensen_shannon_mi(enc_global:torch.Tensor, enc_local: torch.Tensor):
     """ Jensen-Shannon mutual information estimate.
 
         Parameters:

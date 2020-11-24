@@ -120,8 +120,13 @@ class Solver(object):
                 batch_x = torch.stack(batch_x).permute(0,3,2,1)
                 
                 # For each action/dynamic graph in the batch we get the gbl and lcl representation
-                gbl, lcl = self.model(batch_x, torch.tensor(KINECT_ADJACENCY))
-                loss = self.loss_fn(lcl, gbl)
+                # yhat = gbl, lcl
+                yhat = self.model(batch_x, torch.tensor(KINECT_ADJACENCY))
+                
+                if isinstance(yhat, tuple):
+                    loss = self.loss_fn(*yhat)
+                else:
+                    loss = self.loss_fn(yhat, batch_.y)
 
                 self.train_batch_losses.append(torch.squeeze(loss).item())
                 loss.backward()
@@ -150,8 +155,12 @@ class Solver(object):
                         batch_x = torch.stack(batch_x).permute(0,3,2,1)
                         
                         # For each action/dynamic graph in the batch we get the gbl and lcl representation
-                        gbl, lcl = self.model(batch_x, torch.tensor(KINECT_ADJACENCY))
-                        loss = self.loss_fn(lcl, gbl)
+                        yhat = self.model(batch_x, torch.tensor(KINECT_ADJACENCY))
+                
+                        if isinstance(yhat, tuple):
+                            loss = self.loss_fn(*yhat)
+                        else:
+                            loss = self.loss_fn(yhat, batch_.y)
 
                         self.val_batch_losses.append(torch.squeeze(loss).item())
                         

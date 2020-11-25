@@ -119,6 +119,10 @@ class TIGDataset(Dataset):
         num_chunks = int(len(self.raw_file_names) // np.ceil(len(self.raw_file_names)/self.num_chunks))
         file_names = [f"kinetic_skeleton_data_{i}.pt" for i in range(num_chunks)]
         return file_names
+    
+    @property
+    def chunk_size(self):
+        return np.ceil(len(self.raw_file_names)/self.num_chunks)
 
     def download(self):
         """ Not used yet! Maybe later direct connection to DB here.
@@ -142,9 +146,9 @@ class TIGDataset(Dataset):
         file_num = 0  # Output file index.
         start = 0 # Not used yet
 
-        if isinstance(file_num, float):
-            load_chunk = np.ceil(file_num) + 1
-            data_list = torch.load(self.processed_paths[load_chunk])
+        # if isinstance(file_num, float):
+        #     load_chunk = np.ceil(file_num) + 1
+        #     data_list = torch.load(self.processed_paths[load_chunk])
 
         # Iterate over all "raw" files
         for i, json_file in enumerate(tqdm(self.raw_paths, disable=(not self.verbose),
@@ -192,11 +196,12 @@ class TIGDataset(Dataset):
         torch.save(data_list, self.processed_paths[file_num])
 
     def len(self):
-        return len(self.processed_file_names)
+        return len(self.raw_file_names)
 
     def get(self, idx):
-        data = torch.load(self.processed_paths[idx])
-        return data
+        chunk = self.chunk_size
+        data = torch.load(self.processed_paths[int(np.floor(idx/chunk))])
+        return data[int(idx%chunk)]
 
 
 class TIGInMemoryDataset(InMemoryDataset):

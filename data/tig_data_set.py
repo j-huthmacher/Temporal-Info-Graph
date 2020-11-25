@@ -123,6 +123,17 @@ class TIGDataset(Dataset):
     @property
     def chunk_size(self):
         return np.ceil(len(self.raw_file_names)/self.num_chunks)
+    
+    @property
+    def max_frames(self):
+        """
+        """
+        max_frames = -1
+
+        for data in dataset:
+            max_frames = max_frames if max_frames > data.frames else data.frames
+        
+        return max_frames
 
     def download(self):
         """ Not used yet! Maybe later direct connection to DB here.
@@ -182,9 +193,9 @@ class TIGDataset(Dataset):
                         edge_index = torch.tensor(list(G.edges)).t().contiguous()
                         edges.append(edge_index)
 
-                        if k == 150:
-                            self.dim = k
-                            break # unify the number of frames
+                        # if k == 150:
+                        #     self.dim = k
+                        #     break # unify the number of frames
                             
                 # Each data point corresponds to a list of graphs.
                 data = SequenceData(edge_index=edges, x=torch.tensor(X), y=y, frames=len(data["data"]))

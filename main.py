@@ -30,13 +30,19 @@ parser.add_argument('--downstream', dest='downstream', action='store_true',
 parser.add_argument('--disable_local_store', dest='disable_local_store', action='store_true',
                     help='Flag to determine if the models should be locally stored. Default: Models are stored locally.')
 
+parser.add_argument('--prep_data', dest='prep_data', action="store_true",
+                    help='Prepare data.')
+
+# parser.add_argument('--type', dest='type', action="str",
+#                     help='Prepare data.')
+
 args = parser.parse_args()
 
 
 #############
 # Execution #
 #############
-if args.train:    
+if args.train:
     #######################
     # Trainings procedure #
     #######################
@@ -87,4 +93,19 @@ if args.train:
     # Training is executed from here
     tracker = Tracker("TIG_Training", db_url, interactive=True)
     tracker.track(exp_train)
+
+elif args.prep_data:
+    # Prepare data 
+    data_paths = [
+        "C:/Users/email/Documents/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics_train/",
+        "C:/Users/email/Documents/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics_val/"
+    ]
+
+    output = "C:/Users/email/Documents/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/"
+
+    log.info("Process data")
+
+    _ = TIGDataset(paths = data_paths, output=output, verbose=True, num_chunks=15)
+
+    log.info("Data set processed")
 

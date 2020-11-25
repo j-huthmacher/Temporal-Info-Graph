@@ -5,7 +5,7 @@
     @author: jhuthmacher
 """
 import json
-from os import listdir
+from os import listdir, makedirs
 from os.path import isfile, join, exists
 from tqdm import tqdm
 
@@ -19,6 +19,7 @@ import networkx as nx
 from data import KINECT_ADJACENCY
 from config.config import log
 
+
 ##########################
 # Custom DataSet Objects #
 ##########################
@@ -26,7 +27,8 @@ from config.config import log
 class TIGDataset(Dataset):
     """ TIG data set for data that is too large for the memory.
     """
-    def __init__(self, paths: [str], output: str = "./", num_chunks: int = 15, verbose: bool = False):
+    def __init__(self, paths: [str], output: str = "./", num_chunks: int = 15,
+                 verbose: bool = False):
         """ Initialization of the TIG DataSet
 
             Important: The number of output files may deviate from the number of chunks.
@@ -53,17 +55,47 @@ class TIGDataset(Dataset):
 
         self.verbose = verbose
 
+        self.init_paths()
+
         super().__init__(output)
+
+    def init_paths(self):
+        """ Calculate the path only one time!
+        """
+        paths = []
+        files = []
+        for path in self.paths:
+            # files += [f for f in listdir(path) if isfile(join(path, f))] # isfile(join(...)) takes much more time
+            paths += [join(path, f) for f in listdir(path)]
+            files += [f for f in listdir(path)]
+
+        self._raw_file_names = files
+        self._raw_paths = paths
+    
+    def _download(self):
+        """ This is the bottle neck!!! Don't check if each file exists
+        """
+        exist = False
+        for f in self.raw_paths:
+            exist = exist & isfile(f)
+
+            if exist == False:
+                # At least one file is missing
+                break
+
+        if exist:
+            return
+        else:
+            # makedirs(self.processed_dir + "/raw")
+            # self.download()
+            # Has to be adapted for downloading
+            pass
 
     @property
     def raw_paths(self):
         """ The filepaths to find in order to skip the download.
         """
-        paths = []
-        for path in self.raw_dir:
-            paths += [join(path, f) for f in listdir(path) if isfile(join(path, f))]
-        return paths
-
+        return self._raw_paths
 
     @property
     def raw_dir(self):
@@ -76,16 +108,13 @@ class TIGDataset(Dataset):
     def raw_file_names(self):
         """ The raw file names.
         """        
-        files = []
-        for path in self.paths:
-            files += [f for f in listdir(path) if isfile(join(path, f))]
-        
-        return files
+        return self._raw_file_names
 
     @property
     def processed_file_names(self):
         """ Name of the output name after the data is processed.
         """
+        # Should be fast enough
         # Makes sure that the data is equally distributed among the output files.
         num_chunks = int(len(self.raw_file_names) // np.ceil(len(self.raw_file_names)/self.num_chunks))
         file_names = [f"kinetic_skeleton_data_{i}.pt" for i in range(num_chunks)]
@@ -107,12 +136,19 @@ class TIGDataset(Dataset):
             appropriate batches, where the data have different sizes.
 
             Utilizes networkx to create the edge_index from global adjacency.
-        """        
+        """    
+
         data_list = []  # Will store the data for one output file.
         file_num = 0  # Output file index.
-        
+        start = 0 # Not used yet
+
+        if isinstance(file_num, float):
+            load_chunk = np.ceil(file_num) + 1
+            data_list = torch.load(self.processed_paths[load_chunk])
+
         # Iterate over all "raw" files
-        for i, json_file in enumerate(tqdm(self.raw_paths, disable=(not self.verbose), desc=f"Files processed: ")):
+        for i, json_file in enumerate(tqdm(self.raw_paths, disable=(not self.verbose),
+                                           desc=f"Files processed ({file_num} stored): "), start):
 
             # After a output file reached the limit of data instances in it, write it to the disk and continue with the next file/chunk.
             if i != 0 and i % np.ceil(len(self.raw_file_names)/len(self.processed_paths)) == 0:                

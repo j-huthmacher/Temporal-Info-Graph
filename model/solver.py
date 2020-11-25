@@ -6,6 +6,7 @@ from typing import Callable
 import torch
 import torch.optim as optim
 from torch import nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import numpy as np
@@ -30,6 +31,7 @@ class Solver(object):
     def __init__(self, model: nn.Module, dataloader: [DataLoader],
                  optimizer: torch.optim.Optimizer = None,
                  loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = None,
+                 pad_length=None,
                  train_cfg = {}, test_cfg = {}):
         """ Initialization of the Solver.
 
@@ -69,6 +71,7 @@ class Solver(object):
         }
         self.test_cfg = {**self.test_cfg, **test_cfg}
 
+        self.pad_length = pad_length
         self.model = model
         self.optimizer = optim.Adam(model.parameters(), lr=self.train_cfg["learning_rate"]) if optimizer is None else optimizer
         self.loss_fn = jensen_shannon_mi if loss_fn is None else loss_fn
@@ -115,7 +118,15 @@ class Solver(object):
                 batch_x = []
                 for graph in range(batch_.num_graphs):
                     # Per graph extract feature matrix from batch
-                    batch_x.append(batch_.x[batch_.batch[batch_.batch==graph]].clone().detach())
+
+                    bb = batch_.x[batch_.batch[batch_.batch==graph]].clone().detach()
+
+                    seq_length = bb.shape[0]
+                    if self.pad_length is not None and seq_length < self.pad_length:
+                        bb = F.pad(input=bb, pad=(0, 0, 0, 0, 0, self.pad_length - seq_length),
+                                   mode='constant', value=0)
+
+                    batch_x.append(bb)
                 
                 batch_x = torch.stack(batch_x).permute(0,3,2,1)
                 
@@ -150,7 +161,14 @@ class Solver(object):
                         batch_x = []
                         for graph in range(batch_.num_graphs):
                             # Per graph extract feature matrix from batch
-                            batch_x.append(batch_.x[batch_.batch[batch_.batch==graph]].clone().detach())
+                            bb = batch_.x[batch_.batch[batch_.batch==graph]].clone().detach()
+
+                            seq_length = bb.shape[0]
+                            if self.pad_length is not None and seq_length < self.pad_length:
+                                bb = F.pad(input=bb, pad=(0, 0, 0, 0, 0, self.pad_length - seq_length),
+                                        mode='constant', value=0)
+
+                            batch_x.append(bb)
                         
                         batch_x = torch.stack(batch_x).permute(0,3,2,1)
                         

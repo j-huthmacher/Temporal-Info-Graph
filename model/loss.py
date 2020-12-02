@@ -50,9 +50,9 @@ def jensen_shannon_mi(enc_global:torch.Tensor, enc_local: torch.Tensor):
 
     # Batch loss, i.e. aggregate and normalize
     E_pos = get_positive_expectation(pos_samples, average=False).sum()
-    E_pos = E_pos / num_nodes
+    E_pos = (E_pos / num_nodes) / yhat.shape[0]  # Normalize with the size of the batch to get the batch loss.
     E_neg = get_negative_expectation(neg_samples, average=False).sum()
-    E_neg = E_neg / (num_nodes * (num_graphs - 1))
+    E_neg = (E_neg / (num_nodes * (num_graphs - 1))) / yhat.shape[0]  # Normalize with the size of the batch to get the batch loss.
 
     return E_neg - E_pos
 

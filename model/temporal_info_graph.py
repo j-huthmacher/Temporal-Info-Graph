@@ -23,7 +23,7 @@ class TemporalConvolution(nn.Module):
     """
 
     def __init__(self, c_in: int, c_out: int = 1, kernel: Any = 1,
-                 weights: Any = None, activation: str = "leakyReLU"):
+                 weights: Any = None, activation: str = "leakyReLU", dropout = 0.5):
         """ Initialization of the temporal convolution, which is represented by a simple 2D convolution.
 
             Parameters:
@@ -41,7 +41,7 @@ class TemporalConvolution(nn.Module):
                 activation: str
                     Determines which activation function is used. Options: ['leakyReLU', 'ReLU']
         """
-        super(TemporalConvolution, self).__init__()
+        super().__init__()
 
         # Set paramters
         self.c_in = c_in
@@ -52,7 +52,7 @@ class TemporalConvolution(nn.Module):
         if isinstance(self.kernel, int):
             self.kernel = (1, self.kernel)
 
-        self.conv = nn.Conv2d(self.c_in ,
+        self.conv = nn.Conv2d(self.c_in,
                               self.c_out,
                               kernel_size=self.kernel,
                               bias=(self.weights == None))
@@ -60,7 +60,12 @@ class TemporalConvolution(nn.Module):
         if weights is not None:            
             self.conv.weight = torch.nn.Parameter(self.weights)
 
-        # Set activation
+        #### REGULARIZATION ####
+        self.bn1 = nn.BatchNorm2d(self.c_in)
+        self.bn2 = nn.BatchNorm2d(self.c_out)
+        self.dropout = nn.Dropout(dropout)
+
+        #### ACTIVATIOn ####
         if activation == "leakyReLU":
             self.activation = nn.LeakyReLU()
         elif activation == "ReLU":
@@ -90,10 +95,12 @@ class TemporalConvolution(nn.Module):
             Return:
                 torch.Tensor: Dimension (batch, features, time, nodes)
         """
-        if self.activation is None:
-            return self.conv(X)
-        else:
-            return self.activation(self.conv(X))
+        X = self.bn1(X)
+        X = self.conv(X)
+        X = self.bn2(X)
+        X = self.dropout(X)
+
+        return X if self.activation is None else self.activation(X)
     
     def convShape(self, dim_in: tuple):
         """ Calculate the output dimension of a convolutional layer.
@@ -197,7 +204,7 @@ class TemporalInfoGraph(nn.Module):
     """
 
     def __init__(self, dim_in: tuple, c_in: int, c_out: int = 2, spec_out: int = 2, out: int = 2,
-                 tempKernel: Any = 1, activation: str = "leakyReLU"):
+                 tempKernel: Any = 1, activation: str = "leakyReLU", batch_norm: bool = True):
         """ Initilization of the TIG model.
 
             Parameter:
@@ -234,7 +241,10 @@ class TemporalInfoGraph(nn.Module):
         self.specLayer1 = SpectralConvolution(c_in=self.c_out, c_out=self.spec_out)
         self.tempLayer2 = TemporalConvolution(c_in=self.spec_out, c_out = self.out, kernel = k2)
 
-        #### TO DEVICE #####
+        #### REGULARIZATION ####
+        self.bn = nn.BatchNorm2d(self.c_in) if batch_norm else None
+
+        #### ACTIVATION #####
         if activation == "leakyReLU":
             self.activation = nn.LeakyReLU()
         elif activation == "ReLU":
@@ -277,10 +287,13 @@ class TemporalInfoGraph(nn.Module):
         X = X.type('torch.FloatTensor').to(self.device)
         A = A.type('torch.FloatTensor').to(self.device)
 
+        if self.bn is not None:
+            X = self.bn(X)
+
         H = self.tempLayer1(X) # Returns: (batch, nodes, time, features)
         H1 = self.specLayer1(H, A) # Returns: (batch, nodes, time, features)
         Z = self.tempLayer2(H1.permute(0, 3, 1, 2)) # Expects: (batch, features, nodes, time)
-        Z = Z if self.activation is None else self.activation(Z)        
+        Z = Z if self.activation is None else self.activation(Z)
 
         # Mean readout: Average each feature over all nodes --> dimension (features, 1)
         # Average over dimension 2, dim 2 are the nodes (We want to aggregate the representation of each node!)

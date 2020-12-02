@@ -160,7 +160,7 @@ class SpectralConvolution(nn.Module):
             if self.weights is not None:
                 self.W = self.weights
             else:
-                self.W = torch.rand((self.c_in, self.c_out))
+                self.W = torch.nn.Parameter(torch.rand((self.c_in, self.c_out)))
         
         # Set activation
         if activation == "leakyReLU":
@@ -173,6 +173,7 @@ class SpectralConvolution(nn.Module):
     @property
     def device(self):
         return next(self.parameters()).device
+
     @property
     def is_cuda(self):
         return next(self.parameters()).is_cuda
@@ -189,7 +190,6 @@ class SpectralConvolution(nn.Module):
                 torch.Tensor: Convoluted feature tensor (feature map) of 
                 dimension (batch, nodes, time, features)
         """
-
         # Adjacency multiplication in time!
         # TODO: Adapt the indices to omit the permutation before and after.
         self.W = self.W.to(self.device)
@@ -254,8 +254,8 @@ class TemporalInfoGraph(nn.Module):
 
         #### TO DEVICE #####
         self.tempLayer1 = self.tempLayer1.to(self.device)
-        self.specLayer1 = self.tempLayer1.to(self.device)
-        self.tempLayer2 = self.tempLayer1.to(self.device)
+        self.specLayer1 = self.specLayer1.to(self.device)
+        self.tempLayer2 = self.tempLayer2.to(self.device)
     
     @property
     def device(self):

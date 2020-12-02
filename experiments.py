@@ -22,7 +22,7 @@ def exp_test(tracker):
         tracker.run = _run
         tracker.id = _run._id
 
-        data = np.load("C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/processed/kinetic_skeleton_1.npz", allow_pickle=True)
+        data = np.load("C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetic_skeleton_small.npz", allow_pickle=True)
         data = data["data"][:100]
 
         # 60%, 20%, 20%

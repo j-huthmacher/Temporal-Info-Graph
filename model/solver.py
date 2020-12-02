@@ -83,10 +83,9 @@ class Solver(object):
         # Object storage to track the performance
         self.train_losses = []
         self.val_losses = []
-        self.test_losses = []
-
-        
-
+        self.test_losses = []  # Useless?
+        self.predictions = np.array([])
+        self.labels = np.array([])
 
     def train(self, train_config: dict = None, track = None):
         """ Training method from the solver.
@@ -104,8 +103,8 @@ class Solver(object):
         # Training & Validation #
         #########################
         for self.epoch in tqdm(range(self.train_cfg["n_epochs"]),
-                          disable=(not self.train_cfg["verbose"]),
-                          desc='Epochs'):
+                               disable=(not self.train_cfg["verbose"]),
+                               desc='Epochs'):
             self.train_batch_losses = []
             self.val_batch_losses = []
 
@@ -113,22 +112,10 @@ class Solver(object):
             # Train #
             #########
             self.model.train()
-            for self.batch, batch_ in enumerate(tqdm(self.train_loader, total=len(self.train_loader), disable=True)):
-                # Build plain batches
-                batch_x = []
-                for graph in range(batch_.num_graphs):
-                    # Per graph extract feature matrix from batch
-
-                    bb = batch_.x[batch_.batch[batch_.batch==graph]].clone().detach()
-
-                    seq_length = bb.shape[0]
-                    if self.pad_length is not None and seq_length < self.pad_length:
-                        bb = F.pad(input=bb, pad=(0, 0, 0, 0, 0, self.pad_length - seq_length),
-                                   mode='constant', value=0)
-
-                    batch_x.append(bb)
-                
-                batch_x = torch.stack(batch_x).permute(0,3,2,1)
+            for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.train_loader, total=len(self.train_loader), leave=False,
+                                                                 disable=False, desc=f'Train Batch (Epoch: {self.epoch})')):
+                # The train loader returns dim (batch_size, frames, nodes, features)
+                batch_x = torch.tensor(batch_x.astype("float64")).permute(0,3,2,1)                
                 
                 # For each action/dynamic graph in the batch we get the gbl and lcl representation
                 # yhat = gbl, lcl
@@ -137,7 +124,7 @@ class Solver(object):
                 if isinstance(yhat, tuple):
                     loss = self.loss_fn(*yhat)
                 else:
-                    loss = self.loss_fn(yhat, batch_.y)
+                    loss = self.loss_fn(yhat, torch.tensor(batch_y, dtype=torch.long).to(self.model.device))
 
                 self.train_batch_losses.append(torch.squeeze(loss).item())
                 loss.backward()
@@ -145,8 +132,8 @@ class Solver(object):
                 self.optimizer.step()
                 self.optimizer.zero_grad()
 
-                if callable(track):
-                    track("training")
+                # if callable(track):
+                #     track("training")
 
             if self.val_loader is not None:
                 # For disabling the gradient calculation -> Performance advantages
@@ -155,35 +142,24 @@ class Solver(object):
                     # Validate #
                     ############
                     self.model.eval()
-                    for self.batch, (batch_) in enumerate(tqdm(self.val_loader, disable=True)):
-
-                        # Build plain batches
-                        batch_x = []
-                        for graph in range(batch_.num_graphs):
-                            # Per graph extract feature matrix from batch
-                            bb = batch_.x[batch_.batch[batch_.batch==graph]].clone().detach()
-
-                            seq_length = bb.shape[0]
-                            if self.pad_length is not None and seq_length < self.pad_length:
-                                bb = F.pad(input=bb, pad=(0, 0, 0, 0, 0, self.pad_length - seq_length),
-                                        mode='constant', value=0)
-
-                            batch_x.append(bb)
-                        
-                        batch_x = torch.stack(batch_x).permute(0,3,2,1)
+                    for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.val_loader, disable=False, leave=False,
+                                                                         desc=f'Val Batch (Epoch: {self.epoch})')):
+                        # The train loader returns dim (batch_size, frames, nodes, features)
+                        batch_x = torch.tensor(batch_x.astype("float64")).permute(0,3,2,1)
                         
                         # For each action/dynamic graph in the batch we get the gbl and lcl representation
+                        # yhat = gbl, lcl
                         yhat = self.model(batch_x, torch.tensor(KINECT_ADJACENCY))
                 
                         if isinstance(yhat, tuple):
                             loss = self.loss_fn(*yhat)
                         else:
-                            loss = self.loss_fn(yhat, batch_.y)
+                            loss = self.loss_fn(yhat, torch.tensor(batch_y).to(self.model.device))
 
                         self.val_batch_losses.append(torch.squeeze(loss).item())
                         
-                        if callable(track):
-                            track("validation")
+                        # if callable(track):
+                        #     track("validation")
 
             self.train_losses.append(np.mean(self.train_batch_losses))
             self.val_losses.append(np.mean(self.val_batch_losses))
@@ -192,10 +168,74 @@ class Solver(object):
                 track("epoch")
             
  
-    def test(self, test_config: dict = None):
+    def test(self, test_config: dict = None, model: nn.Module = None, test_loader = None,
+             track = None):
         """ Function to test a model, i.e. calculate evaluation metrics.
         """
-        raise NotImplementedError
+        if model is not None:
+            self.model = model
+        if test_loader is not None:
+            self.test_loader = test_loader
+
+        self.predictions = np.array([])
+        self.labels = np.array([])
+
+        with torch.no_grad():
+        
+            #### TEST ####
+            self.model.eval()
+            for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.test_loader, disable=False, leave=False,
+                                                                 desc=f'Test Batch (Epoch: {self.epoch})')):
+                # The train loader returns dim (batch_size, frames, nodes, features)
+                batch_x = torch.tensor(batch_x.astype("float64")).permute(0,3,2,1)                
+                        
+                # For each action/dynamic graph in the batch we get the gbl and lcl representation
+                # yhat = gbl, lcl
+                # yhat stochastic vector
+                yhat = self.model(batch_x, torch.tensor(KINECT_ADJACENCY))
+                
+                if isinstance(yhat, tuple):
+                    # loss = self.loss_fn(*yhat) 
+                    # TODO: Evaluation of TIG model?
+                    pass
+                else:
+                    yhat_idx = torch.argsort(yhat, descending=True)
+                    
+                    self.predictions = np.vstack([self.predictions, yhat_idx.cpu().numpy()]) if self.predictions.size else yhat_idx.cpu().numpy()
+                    self.labels = np.append(self.labels, batch_y)
+
+                    # self.predictions.append(yhat_idx.numpy())
+                    # self.labels.append(batch_y)
+
+                    # pred_labels = torch.stack([yhat, batch_y], 1)
+
+                    # if self.results is None:
+                    #     self.results = pred_labels
+                    # else:
+                    #     self.results = torch.cat((self.results, pred_labels))    
+
+            self.metric = self.evaluate(self.predictions, self.labels)
+
+            if callable(track):
+                track("evaluation")           
+
+            return self.metric
+    
+    def evaluate(self, predictions, labels, mode="top-k"):
+        """
+        """
+
+        k = 1  # Top-k
+        correct = np.sum(np.isin(labels, np.asarray(predictions)[:,:k]))
+        top1 = (correct/len(labels))
+
+        k = 5  # Top-k
+        correct = np.sum(np.isin(labels, np.asarray(predictions)[:,:k]))
+        top5 = (correct/len(labels))
+
+        # accuracy 
+        return top1, top5
+
     
     def __repr__(self):
         """ String representation

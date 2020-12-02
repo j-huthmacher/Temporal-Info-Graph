@@ -3,37 +3,60 @@
 """
 import io
 from typing import Any
+from pathlib import Path
+from datetime import datetime
 
 import torch
 import pymongo
 import gridfs
+import numpy as np
 
 from sacred import Experiment
 from sacred.observers import MongoObserver
 
+from model.solver import Solver
+from config.config import log
+
+
 class Tracker():
     
-    def __init__(self, ex_name = None, db_url = None, db="temporal_info_graph", interactive=False, config = {}):
+    def __init__(self, ex_name = None, db_url = None, db="temporal_info_graph", interactive=False, config = {},
+                 local = True):
         """
         """
         if ex_name is not None:
             self.ex_name = ex_name
-            self.ex = Experiment(ex_name, interactive= interactive)
+            self.ex = Experiment(ex_name, interactive=interactive)
             self.ex.observers.append(MongoObserver(url=db_url, db_name=db))
             self.observer = self.ex.observers[0]
             self.run_collection = self.ex.observers[0].runs
 
+            self.db_url = db_url
+            self.db = db
+            self.interactive = interactive
             self.id = None
-            
+            self.tag = ""
+            self.local = local
+                
             # Assign model config
             self.__dict__ = {**self.__dict__, **config}
             self.run = None
     
     @property
     def model(self):
+        # TODO: Catch if the model/solver doesn't exists yet.
         return self.solver.model
-          
-    def track(self, mode):
+    
+    def new_ex(self, ex_name):
+        """
+        """
+        self.ex_name = ex_name
+        self.ex = Experiment(ex_name, interactive=self.interactive)
+        self.ex.observers.append(MongoObserver(url=self.db_url, db_name=self.db))
+        self.observer = self.ex.observers[0]
+        self.run_collection = self.ex.observers[0].runs
+              
+    def track(self, mode: str, cfg = None):
         """ General track function that distributes the task depending on the mode.
 
             Paramters:
@@ -43,10 +66,9 @@ class Tracker():
                     If it is a string the experiment is already started and the function delegate 
                     the tracking task to the corresponding function.
         """
-
         if callable(mode):
-            # Mode corresponds to an function
-            self.ex.main(mode)
+            # Mode corresponds to an function            
+            self.ex.main(mode(self))
             self.ex.run()
             
             #############
@@ -54,26 +76,36 @@ class Tracker():
             #############
 
             # Important values in config get overwritten!!! I.e. track after run is done
-            self.log_config("optimzer", str(self.solver.optimizer))
+            # self.log_config(f"{self.tag}optimzer", str(self.solver.optimizer))
+            # self.log_config(f"{self.tag}train_cfg", str(self.solver.train_cfg))
+            # self.log_config(f"{self.tag}test_cfg", str(self.solver.test_cfg))
 
             buffer = io.BytesIO()
             torch.save(self.solver.model, buffer)
 
             self.add_artifact(buffer.getvalue(), name=f"{self.ex_name}.pt")
-
+            
+            if self.local:
+                self.track_locally()
 
         elif mode == "epoch":
             self.track_epoch()
         elif mode == "training":
             self.track_train()
+            # Important values in config get overwritten!!! I.e. track after run is done
+            self.log_config(f"{self.tag}optimzer", str(self.solver.optimizer))
+            self.log_config(f"{self.tag}train_cfg", str(self.solver.train_cfg))
+            self.log_config(f"{self.tag}test_cfg", str(self.solver.test_cfg))
         elif mode == "validation":
             self.track_validation()
+        elif mode == "evaluation":
+            self.track_evaluation()
 
     def track_epoch(self):
         """ Function that manage the tracking per epoch (called from the solver).
         """
-        self.ex.log_scalar("loss.epoch.train", self.solver.train_losses[self.solver.epoch], self.solver.epoch)
-        self.ex.log_scalar("loss.epoch.val", self.solver.val_losses[self.solver.epoch], self.solver.epoch)
+        self.ex.log_scalar(f"{self.tag}loss.epoch.train", self.solver.train_losses[self.solver.epoch], self.solver.epoch)
+        self.ex.log_scalar(f"{self.tag}loss.epoch.val", self.solver.val_losses[self.solver.epoch], self.solver.epoch)
 
     def track_train(self):
         """ Function that manage the tracking per trainings batch (called from the solver).
@@ -81,7 +113,7 @@ class Tracker():
         if hasattr(self, "intermediate_tracking") and not self.intermediate_tracking:
             return
 
-        self.ex.log_scalar(f"loss.batch.train.{self.solver.epoch}", self.solver.train_batch_losses[self.solver.batch], self.solver.batch)
+        self.ex.log_scalar(f"{self.tag}.loss.batch.train.{self.solver.epoch}", self.solver.train_batch_losses[self.solver.batch], self.solver.batch)
     
     def track_validation(self):
         """ Function that manage the tracking per validation batch (called from the solver).
@@ -89,7 +121,16 @@ class Tracker():
         if hasattr(self, "intermediate_tracking") and not self.intermediate_tracking:
             return
 
-        self.ex.log_scalar(f"loss.batch.val.{self.solver.epoch}", self.solver.val_batch_losses[self.solver.batch], self.solver.batch)
+        self.ex.log_scalar(f"{self.tag}.loss.batch.val.{self.solver.epoch}", self.solver.val_batch_losses[self.solver.batch], self.solver.batch)
+    
+    def track_evaluation(self):
+        """ Function that manage the tracking per validation batch (called from the solver).
+        """
+        if hasattr(self, "intermediate_tracking") and not self.intermediate_tracking:
+            return
+
+        self.ex.log_scalar(f"{self.tag}test.top1", self.solver.metric[0])
+        self.ex.log_scalar(f"{self.tag}test.top5", self.solver.metric[1])
 
     def track_traning(self, train):
         """
@@ -101,6 +142,28 @@ class Tracker():
         
         return inner
     
+    def track_testing(self, test):
+        def inner(*args):
+            # Extract solver
+            self.solver = test.__self__            
+            test(*args, track = self.track)            
+        
+        return inner
+
+    def track_locally(self):
+        """
+        """
+        date = datetime.now().strftime("%d%m%Y_%H%M")
+        Path(f"./output/{date}/").mkdir(parents=True, exist_ok=True)
+
+        np.save(f'./output/{date}/TIG_{self.tag}_train_losses.npy', self.solver.train_losses)
+        np.save(f'./output/{date}/TIG_{self.tag}_val_losses.npy', self.solver.val_losses)
+        np.save(f'./output/{date}/TIG_{self.tag}_top1.npy', self.solver.metric[0])
+        np.save(f'./output/{date}/TIG_{self.tag}_top5.npy', self.solver.metric[1])
+
+        torch.save(self.model, f'./output/{date}/TIG_{self.tag}.pt')
+        log.info(f"Experiment stored at './output/{date}/")
+
     ##########################
     # Custom Sacred Tracking #
     ##########################

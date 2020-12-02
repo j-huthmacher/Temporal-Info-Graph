@@ -50,7 +50,7 @@ class TemporalConvolution(nn.Module):
         self.weights = weights
         
         if isinstance(self.kernel, int):
-            self.kernel = (1, self.kernel)            
+            self.kernel = (1, self.kernel)
 
         self.conv = nn.Conv2d(self.c_in ,
                               self.c_out,
@@ -67,6 +67,16 @@ class TemporalConvolution(nn.Module):
             self.activation = nn.ReLU()
         else:
             self.activation = None
+        
+        #### TO DEVICE #####
+        self.conv = self.conv.to(self.device)
+    
+    @property
+    def device(self):
+        return next(self.parameters()).device
+    @property
+    def is_cuda(self):
+        return next(self.parameters()).is_cuda
 
     def forward(self, X: torch.Tensor):
         """ Foward operation of the temporal convolution.
@@ -130,7 +140,7 @@ class SpectralConvolution(nn.Module):
                 activation: str
                     Determines which activation function is used. Options: ['leakyReLU', 'ReLU']
         """
-        super(SpectralConvolution, self).__init__()
+        super().__init__()
 
         self.c_in = c_in
         self.c_out = c_out
@@ -151,7 +161,14 @@ class SpectralConvolution(nn.Module):
         elif activation == "ReLU":
             self.activation = nn.ReLU()
         else:
-            self.activation = None
+            self.activation = None       
+    
+    @property
+    def device(self):
+        return next(self.parameters()).device
+    @property
+    def is_cuda(self):
+        return next(self.parameters()).is_cuda
 
     def forward(self, X: torch.Tensor, A: torch.Tensor):
         """ Forward pass of the spectral convolution layer.
@@ -168,7 +185,8 @@ class SpectralConvolution(nn.Module):
 
         # Adjacency multiplication in time!
         # TODO: Adapt the indices to omit the permutation before and after.
-        H = torch.einsum("ij,jklm->kilm", [A, X.permute(2, 0, 3, 1)])
+        self.W = self.W.to(self.device)
+        H = torch.einsum("ij,jklm->kilm", [A, X.permute(2, 0, 3, 1)]).to(self.device)
         H = torch.matmul(H, self.W)
         
         return H if self.activation is None else self.activation(H)
@@ -203,6 +221,7 @@ class TemporalInfoGraph(nn.Module):
                     Determines which activation function is used. Options: ['leakyReLU', 'ReLU']                
         """
         super().__init__()
+
         self.c_in = c_in
         self.c_out = c_out
         self.spec_out = spec_out
@@ -215,19 +234,32 @@ class TemporalInfoGraph(nn.Module):
         self.specLayer1 = SpectralConvolution(c_in=self.c_out, c_out=self.spec_out)
         self.tempLayer2 = TemporalConvolution(c_in=self.spec_out, c_out = self.out, kernel = k2)
 
-        # Set activation
+        #### TO DEVICE #####
         if activation == "leakyReLU":
             self.activation = nn.LeakyReLU()
         elif activation == "ReLU":
             self.activation = nn.ReLU()
         else:
-            self.activation = None
+            self.activation = None        
+
+        #### TO DEVICE #####
+        self.tempLayer1 = self.tempLayer1.to(self.device)
+        self.specLayer1 = self.tempLayer1.to(self.device)
+        self.tempLayer2 = self.tempLayer1.to(self.device)
+    
+    @property
+    def device(self):
+        return next(self.parameters()).device
+    
+    @property
+    def is_cuda(self):
+        return next(self.parameters()).is_cuda
 
     def forward(self, X: torch.Tensor, A: torch.Tensor):
         """ Forward function of the temporl info graph model.
 
-            Consists of a initial temporal convolution, followed by an spectral convolution and 
-            finalized with another temporal convolution.
+            Consists of a initial temporal convolution, followed by an spectral
+            convolution and finalized with another temporal convolution.
 
             Parameters:
                 X: torch.Tensor
@@ -241,8 +273,9 @@ class TemporalInfoGraph(nn.Module):
                 Dimensions: (nodes), (batch, features, nodes)
         """
 
-        X = X.type('torch.FloatTensor')
-        A = A.type('torch.FloatTensor')
+        # Features could be twice or more!
+        X = X.type('torch.FloatTensor').to(self.device)
+        A = A.type('torch.FloatTensor').to(self.device)
 
         H = self.tempLayer1(X) # Returns: (batch, nodes, time, features)
         H1 = self.specLayer1(H, A) # Returns: (batch, nodes, time, features)
@@ -260,6 +293,6 @@ class TemporalInfoGraph(nn.Module):
         return torch.squeeze(global_Z, dim=-1), torch.squeeze(local_Z, dim=-1)
 
     @property
-    def paramters(self):
+    def num_paramters(self):
         # return(summary(self, (self.c_in, self.dim_in[0], self.dim_in[1])))
         return f"Parameters {sum(p.numel() for p in self.parameters())}"

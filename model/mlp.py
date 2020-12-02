@@ -8,7 +8,7 @@ class MLP(nn.Module):
     """ Primitive MLP for downstream classification
     """
 
-    def __init__(self, in_dim, num_class, encoder: nn.Module):
+    def __init__(self, in_dim, num_class, encoder: nn.Module = None):
         """ Initialization of the downstream MLP. Hidden dimension 128.
 
             Paramters:
@@ -22,10 +22,13 @@ class MLP(nn.Module):
         """
         super(MLP, self).__init__()
 
-        for p in encoder.parameters():
-            p.requires_grad = False
+        self.encoder = encoder 
+        
+        if self.encoder is not None: 
+            for p in encoder.parameters():
+                p.requires_grad = False
 
-        self.encoder = encoder
+            self.encoder = encoder
 
         self.layers = nn.Sequential(
             nn.Linear(in_dim, 128),
@@ -33,6 +36,19 @@ class MLP(nn.Module):
             nn.Linear(128, num_class),
             nn.Softmax()
         )
+
+        #### TO DEVICE #####
+        if self.encoder is not None: 
+            self.encoder = self.encoder.to(self.device)
+        self.layers = self.layers.to(self.device)
+
+    @property
+    def device(self):
+        return next(self.parameters()).device
+    
+    @property
+    def is_cuda(self):
+        return next(self.parameters()).is_cuda
 
     def forward(self, x: torch.Tensor, A: torch.Tensor):
         """ Forward function
@@ -43,8 +59,9 @@ class MLP(nn.Module):
             Return:
                 torch.Tensor: Dimension (batch, num_class)
         """
-        x_enc, _ = self.encoder(x, A)
+        if self.encoder is not None: 
+            x, _ = self.encoder(x, A)
 
-        x = self.layers(x_enc)
+        x = self.layers(x)
 
         return x

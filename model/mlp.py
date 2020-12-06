@@ -8,7 +8,7 @@ class MLP(nn.Module):
     """ Primitive MLP for downstream classification
     """
 
-    def __init__(self, in_dim, num_class, encoder: nn.Module = None):
+    def __init__(self, in_dim, num_class, hidden_layers = [128], encoder: nn.Module = None):
         """ Initialization of the downstream MLP. Hidden dimension 128.
 
             Paramters:
@@ -20,7 +20,7 @@ class MLP(nn.Module):
                     Encoder to create hidden representation. To not retrain the encoder the 
                     parameters are disabled for the gradient flow.
         """
-        super(MLP, self).__init__()
+        super().__init__()
 
         self.encoder = encoder 
         
@@ -30,12 +30,17 @@ class MLP(nn.Module):
 
             self.encoder = encoder
 
-        self.layers = nn.Sequential(
-            nn.Linear(in_dim, 128),
-            nn.LeakyReLU(),
-            nn.Linear(128, num_class),
-            nn.Softmax()
-        )
+        layers = [nn.Linear(in_dim, hidden_layers[0]), nn.ReLU(inplace=True)]
+
+        for hl in range(1, len(hidden_layers)):
+            layers.append(nn.Linear(hidden_layers[hl-1], hidden_layers[hl]))
+            layers.append(nn.ReLU(inplace=True))
+        
+        layers.append(nn.Linear(hidden_layers[-1], num_class))
+        # layers.append(nn.Softmax(dim=1))  # Normalize over feature dimension.
+        # Softmax within CrossEntropy?
+
+        self.layers = nn.Sequential(*layers)
 
         #### TO DEVICE #####
         if self.encoder is not None: 

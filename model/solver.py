@@ -8,6 +8,7 @@ import torch.optim as optim
 from torch import nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
+from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
 import numpy as np
 
@@ -58,7 +59,8 @@ class Solver(object):
         self.train_cfg = {
             "n_epochs": 10,
             "log_nth": 0,
-            "learning_rate": 1e-4,
+            "learning_rate": 1e-3,
+            "weight_decay": 1e-3,
             "verbose": False
         }
         self.train_cfg = {**self.train_cfg, **train_cfg}
@@ -73,11 +75,17 @@ class Solver(object):
 
         self.pad_length = pad_length
         self.model = model
-        self.optimizer = optim.Adam(model.parameters(), lr=self.train_cfg["learning_rate"]) if optimizer is None else optimizer
+        self.optimizer = (optim.Adam(
+                model.parameters(), 
+                lr=self.train_cfg["learning_rate"],
+                weight_decay=self.train_cfg["weight_decay"]
+            ) 
+            if optimizer is None 
+            else optimizer)
         self.loss_fn = jensen_shannon_mi if loss_fn is None else loss_fn
 
         self.train_loader = dataloader[0]
-        self.val_loader = dataloader[1] if len(dataloader) == 2 else None
+        self.val_loader = dataloader[1] if len(dataloader) == 2 or len(dataloader) == 3 else None
         self.test_loader = dataloader[2] if len(dataloader) == 3 else None
 
         # Object storage to track the performance
@@ -86,6 +94,9 @@ class Solver(object):
         self.test_losses = []  # Useless?
         self.predictions = np.array([])
         self.labels = np.array([])
+
+        self.val_pred = np.array([])
+        self.val_label = np.array([])
 
     def train(self, train_config: dict = None, track = None):
         """ Training method from the solver.
@@ -98,13 +109,17 @@ class Solver(object):
         if train_config is not None:
             # Merges custom config with default config!
             self.train_cfg = {**self.train_cfg, **train_config}
+
+        
+        decayRate = 0.95
+        lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=self.optimizer, gamma=decayRate)
         
         #########################
         # Training & Validation #
         #########################
         for self.epoch in tqdm(range(self.train_cfg["n_epochs"]),
                                disable=(not self.train_cfg["verbose"]),
-                               desc='Epochs'):
+                               desc=f'Epochs ({self.model.__class__.__name__})'):
             self.train_batch_losses = []
             self.val_batch_losses = []
 
@@ -113,10 +128,12 @@ class Solver(object):
             #########
             self.model.train()
             for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.train_loader, total=len(self.train_loader), leave=False,
-                                                                 disable=False, desc=f'Train Batch (Epoch: {self.epoch})')):
+                                                                 disable=False, desc=f'Trai. Batch (Epoch: {self.epoch})')):
                 # The train loader returns dim (batch_size, frames, nodes, features)
                 batch_x = torch.tensor(batch_x.astype("float64")).permute(0,3,2,1)                
                 
+                self.optimizer.zero_grad() # https://stackoverflow.com/questions/48001598/why-do-we-need-to-call-zero-grad-in-pytorch
+
                 # For each action/dynamic graph in the batch we get the gbl and lcl representation
                 # yhat = gbl, lcl
                 yhat = self.model(batch_x, torch.tensor(KINECT_ADJACENCY))
@@ -128,9 +145,8 @@ class Solver(object):
 
                 self.train_batch_losses.append(torch.squeeze(loss).item())
                 loss.backward()
-                # clip_grad_norm(model.parameters(), 1)
+                clip_grad_norm_(self.model.parameters(), 1)
                 self.optimizer.step()
-                self.optimizer.zero_grad()
 
                 # if callable(track):
                 #     track("training")
@@ -138,12 +154,14 @@ class Solver(object):
             if self.val_loader is not None:
                 # For disabling the gradient calculation -> Performance advantages
                 with torch.no_grad():
+                    self.val_pred = np.array([])
+                    self.val_label = np.array([])
                     ############
                     # Validate #
                     ############
                     self.model.eval()
                     for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.val_loader, disable=False, leave=False,
-                                                                         desc=f'Val Batch (Epoch: {self.epoch})')):
+                                                                         desc=f'Vali. Batch (Epoch: {self.epoch})')):
                         # The train loader returns dim (batch_size, frames, nodes, features)
                         batch_x = torch.tensor(batch_x.astype("float64")).permute(0,3,2,1)
                         
@@ -154,15 +172,25 @@ class Solver(object):
                         if isinstance(yhat, tuple):
                             loss = self.loss_fn(*yhat)
                         else:
-                            loss = self.loss_fn(yhat, torch.tensor(batch_y).to(self.model.device))
+                            loss = self.loss_fn(yhat, torch.tensor(batch_y, dtype=torch.long).to(self.model.device))
+                            
+                            #### EVALUATION DURING VALIDATION ####
+                            yhat_idx = torch.argsort(yhat, descending=True)
+                            self.val_pred = np.vstack([self.val_pred, yhat_idx.cpu().numpy()]) if self.val_pred.size else yhat_idx.cpu().numpy()
+                            self.val_label = np.append(self.val_label, batch_y)
 
                         self.val_batch_losses.append(torch.squeeze(loss).item())
+
+                    if not isinstance(yhat, tuple):
+                        self.val_metric = self.evaluate(self.val_pred, self.val_label)
                         
                         # if callable(track):
                         #     track("validation")
 
-            self.train_losses.append(np.mean(self.train_batch_losses))
-            self.val_losses.append(np.mean(self.val_batch_losses))
+            lr_scheduler.step()
+
+            self.train_losses.append(np.mean(self.train_batch_losses) if len(self.train_batch_losses) > 0 else 0)
+            self.val_losses.append(np.mean(self.val_batch_losses) if len(self.val_batch_losses) > 0 else 0)
 
             if callable(track):
                 track("epoch")
@@ -185,7 +213,7 @@ class Solver(object):
             #### TEST ####
             self.model.eval()
             for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.test_loader, disable=False, leave=False,
-                                                                 desc=f'Test Batch (Epoch: {self.epoch})')):
+                                                                 desc=f'Test. Batch (Epoch: {self.epoch})')):
                 # The train loader returns dim (batch_size, frames, nodes, features)
                 batch_x = torch.tensor(batch_x.astype("float64")).permute(0,3,2,1)                
                         

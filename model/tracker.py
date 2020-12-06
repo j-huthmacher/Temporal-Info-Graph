@@ -27,6 +27,7 @@ class Tracker():
         if ex_name is not None:
             self.ex_name = ex_name
             self.ex = Experiment(ex_name, interactive=interactive)
+            self.ex.logger = log
             self.ex.observers.append(MongoObserver(url=db_url, db_name=db))
             self.observer = self.ex.observers[0]
             self.run_collection = self.ex.observers[0].runs
@@ -37,7 +38,9 @@ class Tracker():
             self.id = None
             self.tag = ""
             self.local = local
-                
+
+            self.date = datetime.now().strftime("%d%m%Y_%H%M")
+                            
             # Assign model config
             self.__dict__ = {**self.__dict__, **config}
             self.run = None
@@ -79,33 +82,31 @@ class Tracker():
             # self.log_config(f"{self.tag}optimzer", str(self.solver.optimizer))
             # self.log_config(f"{self.tag}train_cfg", str(self.solver.train_cfg))
             # self.log_config(f"{self.tag}test_cfg", str(self.solver.test_cfg))
+            # Important values in config get overwritten!!! I.e. track after run is done
 
-            buffer = io.BytesIO()
-            torch.save(self.solver.model, buffer)
-
-            self.add_artifact(buffer.getvalue(), name=f"{self.ex_name}.pt")
-            
             if self.local:
-                self.track_locally()
+                self.track_locally()     
+            
 
         elif mode == "epoch":
-            self.track_epoch()
-        elif mode == "training":
-            self.track_train()
-            # Important values in config get overwritten!!! I.e. track after run is done
-            self.log_config(f"{self.tag}optimzer", str(self.solver.optimizer))
-            self.log_config(f"{self.tag}train_cfg", str(self.solver.train_cfg))
-            self.log_config(f"{self.tag}test_cfg", str(self.solver.test_cfg))
+            self.track_epoch()            
+        elif mode == "training":            
+            self.track_train()            
         elif mode == "validation":
-            self.track_validation()
+            self.track_validation()            
         elif mode == "evaluation":
             self.track_evaluation()
+            
 
     def track_epoch(self):
         """ Function that manage the tracking per epoch (called from the solver).
         """
         self.ex.log_scalar(f"{self.tag}loss.epoch.train", self.solver.train_losses[self.solver.epoch], self.solver.epoch)
         self.ex.log_scalar(f"{self.tag}loss.epoch.val", self.solver.val_losses[self.solver.epoch], self.solver.epoch)
+
+        if hasattr(self.solver, "val_metric"):
+            self.ex.log_scalar(f"{self.tag}val.top1", self.solver.val_metric[0])
+            self.ex.log_scalar(f"{self.tag}val.top5", self.solver.val_metric[1])
 
     def track_train(self):
         """ Function that manage the tracking per trainings batch (called from the solver).
@@ -138,31 +139,58 @@ class Tracker():
         def inner(*args):
             # Extract solver
             self.solver = train.__self__            
-            train(*args, track = self.track)            
-        
+            train(*args, track = self.track)
+
+            #### LOGGING ####
+            self.log_config(f"{self.tag}optimzer", str(self.solver.optimizer))
+            self.log_config(f"{self.tag}train_cfg", str(self.solver.train_cfg))  
+            self.log_config(f"{self.tag}train_size", str(len(self.solver.train_loader.dataset)))
+            self.log_config(f"{self.tag}train_batch_size", str(self.solver.train_loader.batch_size))
+
+            if self.solver.val_loader is not None:
+                self.log_config(f"{self.tag}val_size", str(len(self.solver.val_loader.dataset)))
+                self.log_config(f"{self.tag}val_batch_size", str(self.solver.val_loader.batch_size))
+
+            self.log_config(f"{self.tag}model", str(self.solver.model))
+
+            buffer = io.BytesIO()
+            torch.save(self.solver.model, buffer)
+
+            self.add_artifact(buffer.getvalue(), name=f"{self.ex_name}.pt")
+
+            self.track_locally()
+               
         return inner
     
     def track_testing(self, test):
         def inner(*args):
             # Extract solver
             self.solver = test.__self__            
-            test(*args, track = self.track)            
+            test(*args, track = self.track)  
+
+            if self.solver.test_loader is not None:
+                self.log_config(f"{self.tag}test_cfg", str(self.solver.test_cfg))
+                self.log_config(f"{self.tag}test_size", str(len(self.solver.test_loader.dataset)))
+                self.log_config(f"{self.tag}test_batch_size", str(self.solver.test_loader.batch_size))
+
+            self.log_config(f"{self.tag}model", str(self.solver.model))          
         
         return inner
 
     def track_locally(self):
         """
         """
-        date = datetime.now().strftime("%d%m%Y_%H%M")
-        Path(f"./output/{date}/").mkdir(parents=True, exist_ok=True)
+        Path(f"./output/{self.date}/").mkdir(parents=True, exist_ok=True)
 
-        np.save(f'./output/{date}/TIG_{self.tag}_train_losses.npy', self.solver.train_losses)
-        np.save(f'./output/{date}/TIG_{self.tag}_val_losses.npy', self.solver.val_losses)
-        np.save(f'./output/{date}/TIG_{self.tag}_top1.npy', self.solver.metric[0])
-        np.save(f'./output/{date}/TIG_{self.tag}_top5.npy', self.solver.metric[1])
+        np.save(f'./output/{self.date}/TIG_{self.tag}_train_losses.npy', self.solver.train_losses)
+        np.save(f'./output/{self.date}/TIG_{self.tag}_val_losses.npy', self.solver.val_losses)
+        
+        if hasattr(self.solver, "metric"):
+            np.save(f'./output/{self.date}/TIG_{self.tag}_top1.npy', self.solver.metric[0])
+            np.save(f'./output/{self.date}/TIG_{self.tag}_top5.npy', self.solver.metric[1])
 
-        torch.save(self.model, f'./output/{date}/TIG_{self.tag}.pt')
-        log.info(f"Experiment stored at './output/{date}/")
+        torch.save(self.model, f'./output/{self.date}/TIG_{self.tag}.pt')
+        log.info(f"Experiment stored at './output/{self.date}/")
 
     ##########################
     # Custom Sacred Tracking #

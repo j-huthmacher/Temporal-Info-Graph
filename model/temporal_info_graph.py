@@ -280,7 +280,7 @@ class TemporalInfoGraph(nn.Module):
 
             Return:
                 torch.Tensor, torch.Tensor: 
-                Dimensions: (nodes), (batch, features, nodes)
+                Dimensions: (batch, nodes), (batch, features, nodes)
         """
 
         # Features could be twice or more!

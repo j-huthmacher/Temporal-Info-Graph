@@ -10,7 +10,7 @@ from model.temporal_info_graph import TemporalInfoGraph
 from model.mlp import MLP
 from model.tracker import Tracker
 from model.solver import Solver
-from experiments import exp_overfit, exp_test
+from experiments import exp_overfit, exp_test,exp_test_trained_enc
 
 
 from data import KINECT_ADJACENCY
@@ -49,19 +49,19 @@ if args.train:
     db_url = open(".mongoURL", "r").readline()
 
     # Training is executed from here
-    tracker = Tracker("TIG_Test", db_url, interactive=True)
+    tracker = Tracker("TIG_Test_MLP_Activation_Inplace_Relu", db_url, interactive=True)
     # tracker.track(exp_overfit)
-    tracker.track(exp_test)
+    tracker.track(exp_test_trained_enc)
 
 
 elif args.prep_data:
     # Prepare data 
     data_paths = [
-        "C:/Users/email/Documents/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics_train/",
-        "C:/Users/email/Documents/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics_val/"
+        "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics_train/",
+        "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics_val/"
     ]
 
-    output = "C:/Users/email/Documents/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/"
+    output = "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/"
 
     log.info("Process data")
 

@@ -18,32 +18,49 @@ from model.solver import Solver
 from config.config import log
 
 
-class Tracker():
+class Tracker(object):
     
     def __init__(self, ex_name = None, db_url = None, db="temporal_info_graph", interactive=False, config = {},
-                 local = True):
+                 local = True, local_path: str = None):
         """
         """
+        super().__init__()
         if ex_name is not None:
+            client = pymongo.MongoClient(db_url)
+
+
             self.ex_name = ex_name
             self.ex = Experiment(ex_name, interactive=interactive)
             self.ex.logger = log
-            self.ex.observers.append(MongoObserver(url=db_url, db_name=db))
+            self.ex.observers.append(MongoObserver(client=client, db_name=db))
             self.observer = self.ex.observers[0]
             self.run_collection = self.ex.observers[0].runs
 
             self.db_url = db_url
-            self.db = db
+            self.db = client[db]
             self.interactive = interactive
             self.id = None
             self.tag = ""
             self.local = local
 
             self.date = datetime.now().strftime("%d%m%Y_%H%M")
-                            
+
+            self.checkpoint_dict = {
+                "model_params": {},
+                "optim_params": {},
+            }
+
+            self.local_path = f"./output/{self.date}/" if local_path is None else local_path
+
+            
+
+            self.save_nth = 10
+                                        
             # Assign model config
             self.__dict__ = {**self.__dict__, **config}
             self.run = None
+
+
     
     @property
     def model(self):
@@ -97,10 +114,13 @@ class Tracker():
         elif mode == "evaluation":
             self.track_evaluation()
             
-
     def track_epoch(self):
         """ Function that manage the tracking per epoch (called from the solver).
         """
+        
+        if self.solver.epoch % self.save_nth == 0:
+            self.track_checkpoint() 
+
         self.ex.log_scalar(f"{self.tag}loss.epoch.train", self.solver.train_losses[self.solver.epoch], self.solver.epoch)
         self.ex.log_scalar(f"{self.tag}loss.epoch.val", self.solver.val_losses[self.solver.epoch], self.solver.epoch)
 
@@ -180,17 +200,57 @@ class Tracker():
     def track_locally(self):
         """
         """
-        Path(f"./output/{self.date}/").mkdir(parents=True, exist_ok=True)
+        Path(self.local_path).mkdir(parents=True, exist_ok=True)
 
-        np.save(f'./output/{self.date}/TIG_{self.tag}_train_losses.npy', self.solver.train_losses)
-        np.save(f'./output/{self.date}/TIG_{self.tag}_val_losses.npy', self.solver.val_losses)
+        np.save(f'{self.local_path}/TIG_{self.tag}_train_losses.npy', self.solver.train_losses)
+        np.save(f'{self.local_path}/TIG_{self.tag}_val_losses.npy', self.solver.val_losses)
         
         if hasattr(self.solver, "metric"):
-            np.save(f'./output/{self.date}/TIG_{self.tag}_top1.npy', self.solver.metric[0])
-            np.save(f'./output/{self.date}/TIG_{self.tag}_top5.npy', self.solver.metric[1])
+            np.save(f'{self.local_path}/TIG_{self.tag}_top1.npy', self.solver.metric[0])
+            np.save(f'{self.local_path}/TIG_{self.tag}_top5.npy', self.solver.metric[1])
 
-        torch.save(self.model, f'./output/{self.date}/TIG_{self.tag}.pt')
-        log.info(f"Experiment stored at './output/{self.date}/")
+        torch.save(self.model, f'{self.local_path}/TIG_{self.tag}.pt')
+        log.info(f"Experiment stored at '{self.local_path}")
+
+    def track_checkpoint(self):
+        """
+        """
+        self.checkpoint_dict = {
+            **self.checkpoint_dict, 
+            **{
+                'epoch': self.solver.epoch,
+                'model_state_dict': self.solver.model.state_dict(),
+                'optimizer_state_dict': self.solver.optimizer.state_dict(),
+                'loss': self.solver.val_losses[-1],
+            }
+           }
+        
+        #### Remote ####
+        buffer = io.BytesIO()
+        torch.save(self.checkpoint, buffer)
+
+        self.add_artifact(buffer.getvalue(), name="checkpoint.pt")
+
+        #### Local Checkpoint ####
+        path = self.local_path + "checkpoints/"
+        Path(path).mkdir(parents=True, exist_ok=True)
+        
+        torch.save(self.checkpoint_dict, f"{path}checkpoint.pt")
+
+        log.info("Checkpoint stored")
+
+
+    @property
+    def checkpoint(self):
+        """
+        """
+        try:
+            return torch.load(f"{self.local_path}checkpoints/checkpoint.pt")
+        except Exception as e:
+            # Checkpoint doesn't exists
+            return None
+
+
 
     ##########################
     # Custom Sacred Tracking #
@@ -265,7 +325,12 @@ class Tracker():
         """
 
         db_filename = "artifact://{}/{}/{}".format(self.observer.runs.name, self.id, name)
-        file_id = self.observer.fs.put( file, filename=db_filename)
+        
+        result = self.db["fs.files"].find_one({"name": self.observer.fs.delete(db_filename)})
+        if "_id" in result:
+            self.observer.fs.delete(result['_id'])
+        
+        file_id = self.observer.fs.put(file, filename=db_filename)
 
         self.observer.run_entry["artifacts"].append({"name": name, "file_id": file_id})
         self.observer.save()

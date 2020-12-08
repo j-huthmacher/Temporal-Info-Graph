@@ -9,7 +9,7 @@ from torch import nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
-from tqdm import tqdm
+from tqdm import tqdm, trange
 import numpy as np
 
 from data import KINECT_ADJACENCY
@@ -29,10 +29,10 @@ class Solver(object):
     """ The Solver class implement several functions to provide a common training and testing procedure.
     """
 
+    #pylint: disable=dangerous-default-value
     def __init__(self, model: nn.Module, dataloader: [DataLoader],
                  optimizer: torch.optim.Optimizer = None,
                  loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = None,
-                 pad_length=None,
                  train_cfg = {}, test_cfg = {}):
         """ Initialization of the Solver.
 
@@ -53,35 +53,49 @@ class Solver(object):
                 loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
                     Function calculating the loss of the model.
         """
-        #######################
-        # Train configuration #
-        #######################
+        #### Train configuration ####
         self.train_cfg = {
             "n_epochs": 10,
             "log_nth": 0,
-            "learning_rate": 1e-3,
-            "weight_decay": 1e-3,
+            "optimizer": {
+                "lr": 1e-3,
+                "weight_decay": 1e-3
+                },
             "verbose": False
         }
         self.train_cfg = {**self.train_cfg, **train_cfg}
 
-        ######################
-        # Test configuration #
-        ######################
+        #### Test configuration ####
         self.test_cfg = {
             "n_batches": 1,
         }
         self.test_cfg = {**self.test_cfg, **test_cfg}
 
-        self.pad_length = pad_length
-        self.model = model
-        self.optimizer = (optim.Adam(
-                model.parameters(), 
-                lr=self.train_cfg["learning_rate"],
-                weight_decay=self.train_cfg["weight_decay"]
-            ) 
-            if optimizer is None 
-            else optimizer)
+        #### load check point
+
+        if isinstance(model, tuple):
+            # Model is a checkpoint
+            checkpoint = model[0]
+            modelClass = model[1]
+            optimClass = model[2] if len(model) > 2 else optim.Adam
+
+            self.model = modelClass(**checkpoint['model_params'])
+            self.model.load_state_dict(checkpoint['model_state_dict'])
+
+            optim_params = self.train_cfg["optimizer"] if checkpoint['optim_params'] == {} else checkpoint['optim_params']
+            self.optimizer = optimClass(self.model.parameters(), **optim_params)
+            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+            self.epoch = checkpoint['epoch']
+        else:
+            self.model = model
+            self.optimizer = (optim.Adam(
+                    model.parameters(), 
+                    **self.train_cfg["optimizer"],
+                ) 
+                if optimizer is None 
+                else optimizer)
+
         self.loss_fn = jensen_shannon_mi if loss_fn is None else loss_fn
 
         self.train_loader = dataloader[0]
@@ -92,11 +106,15 @@ class Solver(object):
         self.train_losses = []
         self.val_losses = []
         self.test_losses = []  # Useless?
+
+        self.val_metrics = []
         self.predictions = np.array([])
         self.labels = np.array([])
 
         self.val_pred = np.array([])
         self.val_label = np.array([])
+
+        self.epoch = 0
 
     def train(self, train_config: dict = None, track = None):
         """ Training method from the solver.
@@ -111,15 +129,16 @@ class Solver(object):
             self.train_cfg = {**self.train_cfg, **train_config}
 
         
-        decayRate = 0.95
-        lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=self.optimizer, gamma=decayRate)
+        # decayRate = 0.95
+        # lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=self.optimizer, gamma=decayRate)
         
         #########################
         # Training & Validation #
         #########################
-        for self.epoch in tqdm(range(self.train_cfg["n_epochs"]),
-                               disable=(not self.train_cfg["verbose"]),
-                               desc=f'Epochs ({self.model.__class__.__name__})'):
+        start_epoch = self.epoch
+        for self.epoch in trange(start_epoch, self.train_cfg["n_epochs"],
+                                 disable=(not self.train_cfg["verbose"]),
+                                 desc=f'Epochs ({self.model.__class__.__name__})'):
             self.train_batch_losses = []
             self.val_batch_losses = []
 
@@ -130,7 +149,11 @@ class Solver(object):
             for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.train_loader, total=len(self.train_loader), leave=False,
                                                                  disable=False, desc=f'Trai. Batch (Epoch: {self.epoch})')):
                 # The train loader returns dim (batch_size, frames, nodes, features)
-                batch_x = torch.tensor(batch_x.astype("float64")).permute(0,3,2,1)                
+                try:
+                    batch_x = torch.tensor(batch_x.astype("float64")).permute(0,3,2,1)
+                except:
+                    # For testing MLP on iris
+                    batch_x = torch.tensor(batch_x.astype("float64"))            
                 
                 self.optimizer.zero_grad() # https://stackoverflow.com/questions/48001598/why-do-we-need-to-call-zero-grad-in-pytorch
 
@@ -163,7 +186,11 @@ class Solver(object):
                     for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.val_loader, disable=False, leave=False,
                                                                          desc=f'Vali. Batch (Epoch: {self.epoch})')):
                         # The train loader returns dim (batch_size, frames, nodes, features)
-                        batch_x = torch.tensor(batch_x.astype("float64")).permute(0,3,2,1)
+                        try:
+                            batch_x = torch.tensor(batch_x.astype("float64")).permute(0,3,2,1)
+                        except:
+                            # For testing MLP on iris
+                            batch_x = torch.tensor(batch_x.astype("float64"))   
                         
                         # For each action/dynamic graph in the batch we get the gbl and lcl representation
                         # yhat = gbl, lcl
@@ -183,11 +210,14 @@ class Solver(object):
 
                     if not isinstance(yhat, tuple):
                         self.val_metric = self.evaluate(self.val_pred, self.val_label)
+
+                        self.val_metrics.append(self.val_metric )
+
                         
                         # if callable(track):
                         #     track("validation")
 
-            lr_scheduler.step()
+            # lr_scheduler.step()
 
             self.train_losses.append(np.mean(self.train_batch_losses) if len(self.train_batch_losses) > 0 else 0)
             self.val_losses.append(np.mean(self.val_batch_losses) if len(self.val_batch_losses) > 0 else 0)
@@ -195,7 +225,6 @@ class Solver(object):
             if callable(track):
                 track("epoch")
             
- 
     def test(self, test_config: dict = None, model: nn.Module = None, test_loader = None,
              track = None):
         """ Function to test a model, i.e. calculate evaluation metrics.
@@ -215,7 +244,11 @@ class Solver(object):
             for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.test_loader, disable=False, leave=False,
                                                                  desc=f'Test. Batch (Epoch: {self.epoch})')):
                 # The train loader returns dim (batch_size, frames, nodes, features)
-                batch_x = torch.tensor(batch_x.astype("float64")).permute(0,3,2,1)                
+                try:
+                    batch_x = torch.tensor(batch_x.astype("float64")).permute(0,3,2,1)
+                except:
+                    # For testing MLP on iris
+                    batch_x = torch.tensor(batch_x.astype("float64"))
                         
                 # For each action/dynamic graph in the batch we get the gbl and lcl representation
                 # yhat = gbl, lcl
@@ -264,7 +297,6 @@ class Solver(object):
         # accuracy 
         return top1, top5
 
-    
     def __repr__(self):
         """ String representation
         """

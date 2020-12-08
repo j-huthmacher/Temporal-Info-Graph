@@ -30,17 +30,19 @@ class MLP(nn.Module):
 
             self.encoder = encoder
 
-        layers = [nn.Linear(in_dim, hidden_layers[0]), nn.ReLU(inplace=True)]
+        layers = [nn.Linear(in_dim, hidden_layers[0]), nn.LeakyReLU(inplace=True)]
 
         for hl in range(1, len(hidden_layers)):
             layers.append(nn.Linear(hidden_layers[hl-1], hidden_layers[hl]))
-            layers.append(nn.ReLU(inplace=True))
+            layers.append(nn.LeakyReLU(inplace=True))
         
         layers.append(nn.Linear(hidden_layers[-1], num_class))
         # layers.append(nn.Softmax(dim=1))  # Normalize over feature dimension.
         # Softmax within CrossEntropy?
 
         self.layers = nn.Sequential(*layers)
+
+        self.layers.apply(self.init_weights)
 
         #### TO DEVICE #####
         if self.encoder is not None: 
@@ -55,6 +57,11 @@ class MLP(nn.Module):
     def is_cuda(self):
         return next(self.parameters()).is_cuda
 
+    def init_weights(self, m):
+        if type(m) == nn.Linear:
+            torch.nn.init.xavier_uniform(m.weight)
+            m.bias.data.fill_(0.01)
+
     def forward(self, x: torch.Tensor, A: torch.Tensor):
         """ Forward function
 
@@ -64,6 +71,8 @@ class MLP(nn.Module):
             Return:
                 torch.Tensor: Dimension (batch, num_class)
         """
+        x = x.type('torch.FloatTensor').to(self.device)
+
         if self.encoder is not None: 
             x, _ = self.encoder(x, A)
 

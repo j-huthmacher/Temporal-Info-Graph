@@ -44,8 +44,6 @@ class TIGDataset(Dataset):
         self.file_name = name + ".npz"
         self.path = f"{path}{name}/"
 
-        self.small = small
-
         self.x = []
         self.y = []       
 

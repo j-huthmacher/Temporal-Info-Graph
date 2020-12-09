@@ -33,17 +33,21 @@ def jensen_shannon_mi(enc_global:torch.Tensor, enc_local: torch.Tensor):
     # I.e. we get for each node and for each graph a vector witht node size, which can be interpreted as our discriminator vector!
     # Output: Per batch entry we get a disciriminator vector (from the formular T(h, H), but T is not a neural net yet)
     # yhat contains negative and positive samples!
-    yhat = torch.bmm(enc_local.permute(0, 2, 1), enc_global.view(enc_global.shape[0], enc_global.shape[1],1))
+    yhat = torch.bmm(enc_local.permute(0, 2, 1), 
+                     enc_global.view(enc_global.shape[0],
+                     enc_global.shape[1],1)).type("torch.FloatTensor")
     # yhat = yhat.t() # Transpose to get the same dimensions as in InfoGraph (nodes x graphs)
     
     ############
     # Sampling #
     ############
-    yhat_matr = torch.flatten(yhat).repeat(num_graphs,1,1).reshape(num_graphs, num_graphs, num_nodes)
+    yhat_matr = torch.flatten(yhat).repeat(num_graphs,1,1)\
+                  .reshape(num_graphs, num_graphs, num_nodes)\
+                  .type("torch.FloatTensor")
 
     # Create unit matrix to mask positive and negative samples
     unit = torch.eye(num_graphs, num_graphs).reshape((num_graphs, num_graphs, 1))
-    unit = unit.repeat(1, 1, num_nodes)
+    unit = unit.repeat(1, 1, num_nodes).type("torch.ShortTensor")
 
     pos_samples = yhat_matr[unit == 1].reshape(num_graphs, num_nodes) # equivalent to torch.diagonal(yhat_matr)
     neg_samples = yhat_matr[unit == 0].reshape(num_graphs, (num_graphs-1)*num_nodes) # Checked!

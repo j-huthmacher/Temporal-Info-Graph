@@ -290,11 +290,14 @@ class TemporalInfoGraph(nn.Module):
         if self.bn is not None:
             X = self.bn(X)
 
-        H = self.tempLayer1(X) # Returns: (batch, nodes, time, features)
-        
+        H = self.tempLayer1(X) # Returns: (batch, out_features, nodes, time)
+
         #### Masking Padding ####
-        pad_idx = (X.sum(dim=2).squeeze().sum(dim=-2) == 0).sum()
-        H[:, :, pad_idx:, : ] = 0 
+        batch_size, num_feature, _, _ = X.shape
+        out_dim = H.shape[1]
+        pad_idx = torch.repeat_interleave((~X.bool()).all(dim=num_feature - 1).all(dim=1),
+                                          repeats=out_dim, dim=0).view(batch_size, out_dim, -1)
+        H[pad_idx, :] = 0
 
         H1 = self.specLayer1(H, A) # Returns: (batch, nodes, time, features)
         Z = self.tempLayer2(H1.permute(0, 3, 1, 2)) # Expects: (batch, features, nodes, time)

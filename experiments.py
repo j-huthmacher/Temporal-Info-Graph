@@ -94,10 +94,10 @@ def exp_test_trained_enc(tracker):
         # y = y[idx.squeeze()]
 
         data = TIGDataset("kinetic_skeleton_5000", path="/content/")
-        train, val = data.split(lim=100) # Default: 80% train, 10% val
+        train, val = data.split(lim=500) # Default: 80% train, 10% val
 
-        train_loader = DataLoader(train, batch_size=4)
-        val_loader = DataLoader(val, batch_size=4)
+        train_loader = DataLoader(train, batch_size=32)
+        val_loader = DataLoader(val, batch_size=32)
 
 
         # Replace class lables to lower values!
@@ -114,7 +114,7 @@ def exp_test_trained_enc(tracker):
         
         # Use the trained model!
         encoder = torch.load("./output/04122020_1641/TIG_.pt")
-        num_classes = int(np.max(y) + 1)
+        num_classes = 400 #int(np.max(y) + 1)
         classifier = MLP(64, num_classes, [256, 512, 1024, 1024, 1024, 1024, 1024, 1024], encoder).cuda()
 
         tracker.log_config(f"{tracker.tag}MLP.model", str(classifier))
@@ -179,10 +179,10 @@ def exp_tig_overfit(tracker):
         tracker.log_config(f"{tracker.tag}local_path", str(tracker.local_path))
 
         data = TIGDataset("kinetic_skeleton_5000", path="/content/")
-        train, val = data.split(lim=100) # Default: 80% train, 10% val
+        train, val = data.split(lim=500) # Default: 80% train, 10% val
 
-        train_loader = DataLoader(train, batch_size=4)
-        val_loader = DataLoader(val, batch_size=4)
+        train_loader = DataLoader(train, batch_size=32)
+        val_loader = DataLoader(val, batch_size=32)
 
         if tracker.checkpoint is not None:
             log.info("Checkpoint exists")

@@ -54,7 +54,7 @@ class Tracker(object):
 
             
 
-            self.save_nth = 10
+            self.save_nth = 100
                                         
             # Assign model config
             self.__dict__ = {**self.__dict__, **config}
@@ -190,7 +190,7 @@ class Tracker(object):
 
             if self.solver.test_loader is not None:
                 self.log_config(f"{self.tag}test_cfg", str(self.solver.test_cfg))
-                self.log_config(f"{self.tag}test_size", str(len(self.solver.test_loader.dataset)))
+                self.log_config(f"{self.tag}test_size", str(np.array(self.solver.test_loader.dataset).shape))
                 self.log_config(f"{self.tag}test_batch_size", str(self.solver.test_loader.batch_size))
 
             self.log_config(f"{self.tag}model", str(self.solver.model))          

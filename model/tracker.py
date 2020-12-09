@@ -164,11 +164,11 @@ class Tracker(object):
             #### LOGGING ####
             self.log_config(f"{self.tag}optimzer", str(self.solver.optimizer))
             self.log_config(f"{self.tag}train_cfg", str(self.solver.train_cfg))  
-            self.log_config(f"{self.tag}train_size", str(len(self.solver.train_loader.dataset)))
+            self.log_config(f"{self.tag}train_size", str(np.array(self.solver.train_loader.dataset).shape))
             self.log_config(f"{self.tag}train_batch_size", str(self.solver.train_loader.batch_size))
 
             if self.solver.val_loader is not None:
-                self.log_config(f"{self.tag}val_size", str(len(self.solver.val_loader.dataset)))
+                self.log_config(f"{self.tag}val_size", str(np.array(self.solver.val_loader.dataset).shape))
                 self.log_config(f"{self.tag}val_batch_size", str(self.solver.val_loader.batch_size))
 
             self.log_config(f"{self.tag}model", str(self.solver.model))

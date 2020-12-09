@@ -150,7 +150,10 @@ class Solver(object):
                                                                  disable=False, desc=f'Trai. Batch (Epoch: {self.epoch})')):
                 # The train loader returns dim (batch_size, frames, nodes, features)
                 try:
-                    batch_x = torch.tensor(batch_x, dtype=torch.float32).permute(0,3,2,1)
+                    if isinstance(batch_x, torch.Tensor):
+                        batch_x = batch_x.type("torch.FloatTensor").permute(0,3,2,1)
+                    else:
+                        batch_x = torch.tensor(batch_x, dtype=torch.float32).permute(0,3,2,1)
                 except:
                     # For testing MLP on iris
                     batch_x = torch.tensor(batch_x, dtype=torch.float32)            

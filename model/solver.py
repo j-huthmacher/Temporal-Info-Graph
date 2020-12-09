@@ -150,10 +150,10 @@ class Solver(object):
                                                                  disable=False, desc=f'Trai. Batch (Epoch: {self.epoch})')):
                 # The train loader returns dim (batch_size, frames, nodes, features)
                 try:
-                    batch_x = torch.tensor(batch_x.astype("float64")).permute(0,3,2,1)
+                    batch_x = torch.tensor(batch_x, dtype=torch.FloatTensor).permute(0,3,2,1)
                 except:
                     # For testing MLP on iris
-                    batch_x = torch.tensor(batch_x.astype("float64"))            
+                    batch_x = torch.tensor(batch_x, dtype=torch.FloatTensor)            
                 
                 self.optimizer.zero_grad() # https://stackoverflow.com/questions/48001598/why-do-we-need-to-call-zero-grad-in-pytorch
 
@@ -187,10 +187,10 @@ class Solver(object):
                                                                          desc=f'Vali. Batch (Epoch: {self.epoch})')):
                         # The train loader returns dim (batch_size, frames, nodes, features)
                         try:
-                            batch_x = torch.tensor(batch_x.astype("float32")).permute(0,3,2,1)
+                            batch_x = torch.tensor(batch_x, dtype=torch.FloatTensor).permute(0,3,2,1)
                         except:
                             # For testing MLP on iris
-                            batch_x = torch.tensor(batch_x.astype("float32"))   
+                            batch_x = torch.tensor(batch_x, dtype=torch.FloatTensor)   
                         
                         # For each action/dynamic graph in the batch we get the gbl and lcl representation
                         # yhat = gbl, lcl
@@ -245,10 +245,10 @@ class Solver(object):
                                                                  desc=f'Test. Batch (Epoch: {self.epoch})')):
                 # The train loader returns dim (batch_size, frames, nodes, features)
                 try:
-                    batch_x = torch.tensor(batch_x.astype("float64")).permute(0,3,2,1)
+                    batch_x = torch.tensor(batch_x, dtype=torch.FloatTensor).permute(0,3,2,1)
                 except:
                     # For testing MLP on iris
-                    batch_x = torch.tensor(batch_x.astype("float64"))
+                    batch_x = torch.tensor(batch_x, dtype=torch.FloatTensor)
                         
                 # For each action/dynamic graph in the batch we get the gbl and lcl representation
                 # yhat = gbl, lcl

@@ -187,10 +187,10 @@ class Solver(object):
                                                                          desc=f'Vali. Batch (Epoch: {self.epoch})')):
                         # The train loader returns dim (batch_size, frames, nodes, features)
                         try:
-                            batch_x = torch.tensor(batch_x.astype("float64")).permute(0,3,2,1)
+                            batch_x = torch.tensor(batch_x.astype("float32")).permute(0,3,2,1)
                         except:
                             # For testing MLP on iris
-                            batch_x = torch.tensor(batch_x.astype("float64"))   
+                            batch_x = torch.tensor(batch_x.astype("float32"))   
                         
                         # For each action/dynamic graph in the batch we get the gbl and lcl representation
                         # yhat = gbl, lcl

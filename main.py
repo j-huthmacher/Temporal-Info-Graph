@@ -4,13 +4,12 @@ import argparse
 from pathlib import Path
 import torch
 import torch.nn as nn
-from torch_geometric.data import DataLoader
 
 from model.temporal_info_graph import TemporalInfoGraph
 from model.mlp import MLP
 from model.tracker import Tracker
 from model.solver import Solver
-from experiments import exp_overfit, exp_test,exp_test_trained_enc
+from experiments import exp_overfit, exp_test,exp_test_trained_enc, exp_tig_overfit
 
 
 from data import KINECT_ADJACENCY
@@ -47,11 +46,12 @@ args = parser.parse_args()
 #############
 if args.train:    
     db_url = open(".mongoURL", "r").readline()
+    torch.cuda.empty_cache()
 
     # Training is executed from here
-    tracker = Tracker("TIG_Test_MLP_Activation_Inplace_Relu", db_url, interactive=True)
+    tracker = Tracker("TIG_Test_Local_vs_Colab", db_url, interactive=True)
     # tracker.track(exp_overfit)
-    tracker.track(exp_test_trained_enc)
+    tracker.track(exp_tig_overfit)
 
 
 elif args.prep_data:

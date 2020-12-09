@@ -284,8 +284,8 @@ class TemporalInfoGraph(nn.Module):
         """
 
         # Features could be twice or more!
-        X = X.type('torch.FloatTensor').to(self.device)
-        A = A.type('torch.FloatTensor').to(self.device)
+        X = X.type('torch.float32').to(self.device)
+        A = A.type('torch.float32').to(self.device)
 
         if self.bn is not None:
             X = self.bn(X)

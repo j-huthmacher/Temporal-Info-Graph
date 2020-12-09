@@ -17,6 +17,74 @@ from data.tig_data_set import TIGDataset
 
 from config.config import log
 
+def exp_colab(tracker):
+    def run(_run):
+        log.info("Start experiment.")        
+        tracker.run = _run
+        tracker.id = _run._id
+
+        tracker.save_nth = 25
+
+        #### Data Set Up ####
+        data = TIGDataset("kinetic_skeleton_5000", path="/content/")
+        x = data.x
+        y = data.y
+
+        train_threshold = int(.6*len(y))
+        val_threshold = int(.8*len(y))
+
+        # 60%, 20%, 20%
+        train_x, train_y = x[:train_threshold], y[:train_threshold] 
+        val_x, val_y = x[train_threshold:val_threshold], y[train_threshold:val_threshold] 
+        # test_x, test_y = x[val_threshold:], y[val_threshold:] 
+
+        train_loader = DataLoader([train_x, train_y], batch_size=4, collate_fn=coll, shuffle=True)
+        val_loader = DataLoader([val_x, val_y], batch_size=4, collate_fn=coll, shuffle=True)
+        # test_loader = DataLoader(test, batch_size=len([1]), collate_fn=coll)
+
+        tracker.log_config(f"{tracker.tag}raw_data_size_y", str(y.shape))
+        tracker.log_config(f"{tracker.tag}raw_data_size_x", str(x.shape))
+
+
+        #### Encoder ####
+        if tracker.checkpoint is not None:
+            log.info("Checkpoint exists")
+            solver = Solver((tracker.checkpoint, TemporalInfoGraph), [train_loader, train_loader])
+        else:
+            tracker.checkpoint_dict["model_params"] = dict(c_in=4, c_out=16, spec_out=16,
+                                                           out=16, dim_in=(18, 300), tempKernel=32)
+
+            tig = TemporalInfoGraph(**tracker.checkpoint_dict["model_params"]).cuda()
+            tracker.log_config(f"{tracker.tag}num_paramters", str(tig.num_paramters))
+            solver = Solver(tig, [train_loader, val_loader])
+        
+        tracker.track_traning(solver.train)({
+            "verbose": True, 
+            "n_epochs": 1024
+            })
+        log.info("Encoder training done!")
+
+        #### Downstream ####
+        log.info("Starting downstream training...")
+        tracker.tag = "MLP."
+        # Use the trained model!
+        num_classes = 400 #int(np.max(y) + 1)
+        classifier = MLP(16, num_classes, [256, 512, 1024], tracker.solver.model).cuda()
+
+        tracker.log_config(f"{tracker.tag}MLP.model", str(classifier))
+        tracker.log_config(f"{tracker.tag}MLP.layers", str([64, 256, 512, num_classes]))
+
+        solver = Solver(classifier, [train_loader, val_loader], loss_fn = nn.CrossEntropyLoss())
+
+        tracker.track_traning(solver.train)({
+            "verbose": True,
+            "n_epochs": 1024,
+            })
+
+        log.info("Experiment done.")
+    return run
+
+
 def exp_test_trained_enc(tracker):
     def run(_run):
         log.info("Start experiment.")
@@ -60,6 +128,7 @@ def exp_test_trained_enc(tracker):
 
         #### DOWNSTREAM ####
         log.info("Starting downstream training...")
+
         
         # Use the trained model!
         encoder = torch.load("./output/04122020_1641/TIG_.pt")

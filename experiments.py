@@ -27,24 +27,11 @@ def exp_colab(tracker):
 
         #### Data Set Up ####
         data = TIGDataset("kinetic_skeleton_5000", path="/content/")
-        x = data.x
-        y = data.y
+        train, val = data.split() # Default: 80% train, 10% val
 
-        train_threshold = int(.6*len(y))
-        val_threshold = int(.8*len(y))
-
-        # 60%, 20%, 20%
-        train_x, train_y = x[:train_threshold], y[:train_threshold] 
-        val_x, val_y = x[train_threshold:val_threshold], y[train_threshold:val_threshold] 
-        # test_x, test_y = x[val_threshold:], y[val_threshold:] 
-
-        train_loader = DataLoader([train_x, train_y], batch_size=4, collate_fn=coll)
-        val_loader = DataLoader([val_x, val_y], batch_size=4, collate_fn=coll)
+        train_loader = DataLoader(train, batch_size=4, collate_fn=coll)
+        val_loader = DataLoader(val, batch_size=4, collate_fn=coll)
         # test_loader = DataLoader(test, batch_size=len([1]), collate_fn=coll)
-
-        tracker.log_config(f"{tracker.tag}raw_data_size_y", str(y.shape))
-        tracker.log_config(f"{tracker.tag}raw_data_size_x", str(x.shape))
-
 
         #### Encoder ####
         if tracker.checkpoint is not None:
@@ -93,21 +80,24 @@ def exp_test_trained_enc(tracker):
         tracker.id = _run._id
         # tracker.run.experiment_info['name'] = "MLP_Learning_Overfitting_Behavior"
 
-        data = TIGDataset("kinetic_skeleton_5000", path="./dataset/")
-        x = data.x[:100]
-        y = data.y[:100]
+        # data = TIGDataset("kinetic_skeleton_5000", path="./dataset/")
+        # x = data.x[:100]
+        # y = data.y[:100]
 
-        tracker.log_config(f"{tracker.tag}label_distr", str(y))
+        # tracker.log_config(f"{tracker.tag}label_distr", str(y))
 
-        # TODO: Stratified sampling
-        sampler = RandomOverSampler(random_state=0)
-        idx, _ = sampler.fit_sample(np.arange(y.shape[0]).reshape(-1, 1), y)
+        # # TODO: Stratified sampling
+        # sampler = RandomOverSampler(random_state=0)
+        # idx, _ = sampler.fit_sample(np.arange(y.shape[0]).reshape(-1, 1), y)
 
-        x = x[idx.squeeze()]
-        y = y[idx.squeeze()]
+        # x = x[idx.squeeze()]
+        # y = y[idx.squeeze()]
 
-        tracker.log_config(f"{tracker.tag}label_distr_balanced", str(y))
-        tracker.log_config(f"{tracker.tag}raw_train_size", str(y.shape))
+        data = TIGDataset("kinetic_skeleton_5000", path="/content/")
+        train, val = data.split(lim=100) # Default: 80% train, 10% val
+
+        train_loader = DataLoader(train, batch_size=4, collate_fn=coll)
+        val_loader = DataLoader(val, batch_size=4, collate_fn=coll)
 
 
         # Replace class lables to lower values!
@@ -117,14 +107,6 @@ def exp_test_trained_enc(tracker):
         # for k,v in zip(keys, vals):
         #     data[data[:, 1] == k, 1] = v
 
-        # 60%, 20%, 20%
-        # train, val, test = np.split(data, [int(.6*len(data)), int(.8*len(data))])
-
-
-        # SGD --> Scattering! https://stats.stackexchange.com/questions/303857/explanation-of-spikes-in-training-loss-vs-iterations-with-adam-optimizer
-        train_loader = DataLoader([x, y], batch_size=y.shape[0], collate_fn=coll)
-        # val_loader = DataLoader(val, batch_size=len(val), collate_fn=coll)
-        # test_loader = DataLoader(test, batch_size=len([1]), collate_fn=coll)
 
         #### DOWNSTREAM ####
         log.info("Starting downstream training...")
@@ -161,16 +143,11 @@ def exp_test(tracker):
         tracker.run = _run
         tracker.id = _run._id
 
-        data = TIGDataset("kinetic_skeleton_5000", path="./dataset/")
-        x = data.x[:100]
-        y = data.y[:100]
+        data = TIGDataset("kinetic_skeleton_5000", path="/content/")
+        train, val = data.split(lim=100) # Default: 80% train, 10% val
 
-        # 60%, 20%, 20%
-        train, val, test = np.split(data, [int(.6*len(data)), int(.8*len(data))])
-
-        train_loader = DataLoader(train, batch_size=10, collate_fn=coll)
-        val_loader = DataLoader(val, batch_size=10, collate_fn=coll)
-        test_loader = DataLoader(test, batch_size=10, collate_fn=coll)
+        train_loader = DataLoader(train, batch_size=4, collate_fn=coll)
+        val_loader = DataLoader(val, batch_size=4, collate_fn=coll)
 
         tig = TemporalInfoGraph(c_in=4, c_out=6, spec_out=7, out=64, dim_in=(18, 300), tempKernel=32).cuda()
         solver = Solver(tig, [train_loader, val_loader])  
@@ -201,16 +178,11 @@ def exp_tig_overfit(tracker):
         tracker.id = _run._id
         tracker.log_config(f"{tracker.tag}local_path", str(tracker.local_path))
 
-        data = TIGDataset("kinetic_skeleton_5000", path="./dataset/")
-        x = data.x[:100]
-        y = data.y[:100]
+        data = TIGDataset("kinetic_skeleton_5000", path="/content/")
+        train, val = data.split(lim=100) # Default: 80% train, 10% val
 
-        # 60%, 20%, 20%
-        # train, val, test = np.split(data, [int(.8*len(data)), int(.9*len(data))])
-
-        train_loader = DataLoader([x,y], batch_size=y.shape[0], collate_fn=coll)
-        # val_loader = DataLoader(val, batch_size=1, collate_fn=coll)
-        # test_loader = DataLoader(test, batch_size=1, collate_fn=coll)
+        train_loader = DataLoader(train, batch_size=4, collate_fn=coll)
+        val_loader = DataLoader(val, batch_size=4, collate_fn=coll)
 
         if tracker.checkpoint is not None:
             log.info("Checkpoint exists")
@@ -237,16 +209,11 @@ def exp_overfit(tracker):
         tracker.run = _run
         tracker.id = _run._id
 
-        data = TIGDataset("kinetic_skeleton_5000", path="./dataset/")
-        x = data.x[:100]
-        y = data.y[:100]
+        data = TIGDataset("kinetic_skeleton_5000", path="/content/")
+        train, val = data.split(lim=100) # Default: 80% train, 10% val
 
-        # 60%, 20%, 20%
-        # train, val, test = np.split(data, [int(.8*len(data)), int(.9*len(data))])
-
-        train_loader = DataLoader([x,y], batch_size=y.shape[0], collate_fn=coll)
-        # val_loader = DataLoader(val, batch_size=1, collate_fn=coll)
-        # test_loader = DataLoader(test, batch_size=1, collate_fn=coll)
+        train_loader = DataLoader(train, batch_size=4, collate_fn=coll)
+        val_loader = DataLoader(val, batch_size=4, collate_fn=coll)
 
         tig = TemporalInfoGraph(c_in=4, c_out=64, spec_out=128, out=256, dim_in=(18, 300), tempKernel=32).cuda()
         solver = Solver(tig, [train_loader, train_loader])  

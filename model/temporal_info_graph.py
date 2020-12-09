@@ -294,7 +294,7 @@ class TemporalInfoGraph(nn.Module):
         
         #### Masking Padding ####
         pad_idx = (X.sum(dim=2).squeeze().sum(dim=-2) == 0).sum()
-        H[:, :, :, pad_idx: ] = 0 
+        H[:, :, pad_idx:, : ] = 0 
 
         H1 = self.specLayer1(H, A) # Returns: (batch, nodes, time, features)
         Z = self.tempLayer2(H1.permute(0, 3, 1, 2)) # Expects: (batch, features, nodes, time)

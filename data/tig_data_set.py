@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 import numpy as np
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, TensorDataset
 import networkx as nx 
 
 from data import KINECT_ADJACENCY
@@ -84,6 +84,43 @@ class TIGDataset(Dataset):
         data = np.load(self.path +  self.file_name, allow_pickle=True)
         self.x = data["x"]
         self.y = data["y"]
+
+    def split(self, train_ratio=0.8, val_ratio=0.1, mode=2):
+        """ Spit data into train, validation and test set.
+
+            The ratio for the test set is calculated using the train and 
+            validation set ratio. In general, the remaining data points are
+            used for the test set.
+            Example: 80% for training, 10% for validation, then we have 
+            90% for train/validation, i.e. the last 10% are used for the 
+            test set.
+
+            Paramters:
+                train_ratio: float
+                    The percentage of the whole data set for the train set
+                val_ratio: float
+                    The percentage of the whole data set for the validation set
+                val_ratio: int
+                    Control which sets are returned. Possible options: [1,2,3]
+                    1 --> Only train set is returned
+                    2 --> Train and validation set is returned
+                    3 --> Train, validation and test set is returned
+            Return:
+                [np.array]: [train_set, val_set, test_set] (depends on the mode)
+        """
+        train_threshold = int(self.y.shape[0] * train_ratio)
+        val_threshold = int(self.y.shape[0] * (train_ratio + val_ratio))
+
+        sets = []
+        sets.append(np.array(list(zip(self.x[:train_threshold], self.y[:train_threshold]))))
+
+        if mode > 1:
+            sets.append(np.array(list(zip(self.x[train_threshold:val_threshold], self.y[train_threshold:val_threshold]))))
+
+        if mode > 2:
+            sets.append(np.array(list(zip(self.x[train_threshold:val_threshold], self.y[train_threshold:val_threshold]))))
+
+        return sets
 
     def __len__(self):
         return len(self.y)

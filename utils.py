@@ -5,7 +5,7 @@ import numpy as np
 
 from config.config import log
 
-def print_size(tensor, byte_per_element):
+def print_size(tensor, byte_per_element, name=""):
     """
     """
-    log.info("Size Unit", (np.prod(tensor.shape) * byte_per_element) // 10**6, "MB")
+    log.info(f"Size Unit ({name}) {(np.prod(tensor.shape) * byte_per_element) // 10**6} MB")

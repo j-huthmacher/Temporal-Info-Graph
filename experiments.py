@@ -38,8 +38,8 @@ def exp_colab(tracker):
         val_x, val_y = x[train_threshold:val_threshold], y[train_threshold:val_threshold] 
         # test_x, test_y = x[val_threshold:], y[val_threshold:] 
 
-        train_loader = DataLoader([train_x, train_y], batch_size=4, collate_fn=coll, shuffle=True)
-        val_loader = DataLoader([val_x, val_y], batch_size=4, collate_fn=coll, shuffle=True)
+        train_loader = DataLoader([train_x, train_y], batch_size=4, collate_fn=coll)
+        val_loader = DataLoader([val_x, val_y], batch_size=4, collate_fn=coll)
         # test_loader = DataLoader(test, batch_size=len([1]), collate_fn=coll)
 
         tracker.log_config(f"{tracker.tag}raw_data_size_y", str(y.shape))

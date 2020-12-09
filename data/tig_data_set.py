@@ -85,7 +85,7 @@ class TIGDataset(Dataset):
         self.x = data["x"]
         self.y = data["y"]
 
-    def split(self, train_ratio=0.8, val_ratio=0.1, mode=2):
+    def split(self, train_ratio=0.8, val_ratio=0.1, mode=2, lim=None):
         """ Spit data into train, validation and test set.
 
             The ratio for the test set is calculated using the train and 
@@ -105,11 +105,17 @@ class TIGDataset(Dataset):
                     1 --> Only train set is returned
                     2 --> Train and validation set is returned
                     3 --> Train, validation and test set is returned
+                lim: None or int
+                    Limit the used data.
             Return:
                 [np.array]: [train_set, val_set, test_set] (depends on the mode)
         """
         train_threshold = int(self.y.shape[0] * train_ratio)
         val_threshold = int(self.y.shape[0] * (train_ratio + val_ratio))
+
+        if lim is not None:
+            train_threshold = int((self.y.shape[0]-lim) * train_ratio)
+            val_threshold = int((self.y.shape[0]-lim) * (train_ratio + val_ratio))
 
         sets = []
         sets.append(np.array(list(zip(self.x[:train_threshold], self.y[:train_threshold]))))

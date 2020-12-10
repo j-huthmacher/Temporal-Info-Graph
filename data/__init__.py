@@ -1,10 +1,13 @@
 """
 """
+from data.tig_data_set import TIGDataset
+from data.data_utils import get_loss
 
+from scipy.linalg import block_diag
 import numpy as np 
 
 # https://github.com/CMU-Perceptual-Computing-Lab/openpose/blob/master/doc/output.md#keypoint-ordering-in-c-python
-KINECT_ADJACENCY = np.array([
+A = np.array([
     #0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17
     [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], # 0
     [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0], # 1
@@ -25,3 +28,5 @@ KINECT_ADJACENCY = np.array([
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], # 16
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], # 17
 ]) 
+
+KINECT_ADJACENCY = block_diag(A, A)

@@ -17,7 +17,6 @@ import torch
 from torch.utils.data import Dataset, TensorDataset
 import networkx as nx 
 
-from data import KINECT_ADJACENCY
 from config.config import log
 
 
@@ -128,6 +127,18 @@ class TIGDataset(Dataset):
 
         return sets
 
+    def stratify(self, num: int, mode: str = "top-class"):
+        """
+        """
+        unique, counts = np.unique(self.y, return_counts=True)
+        merged = np.asarray((unique, counts)).T
+        sor = merged[merged[:,1].argsort()][::-1]
+
+        classes = sor[:num, 0] # Top n classes
+        class_idx = np.where(np.isin(self.y, classes))
+
+        return list(zip(self.x[class_idx], self.y[class_idx]))
+    
     def __len__(self):
         return len(self.y)
 
@@ -167,7 +178,7 @@ class TIGDataset(Dataset):
                         for s, skeleton in enumerate(frame["skeleton"]):
                             if s == 2:
                                 break  # Only consider the two skeletons with the highest average confidence
-                            
+                            # TODO: Append along node axis! (36, 2)
                             X[f, :, (s * 2)] = skeleton['pose'][0::2]
                             X[f, :, (s * 2) + 1] = skeleton['pose'][1::2]
 

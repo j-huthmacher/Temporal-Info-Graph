@@ -108,11 +108,14 @@ class Solver(object):
         self.test_losses = []  # Useless?
 
         self.val_metrics = []
+        self.train_metrics = []
         self.predictions = np.array([])
         self.labels = np.array([])
 
         self.val_pred = np.array([])
         self.val_label = np.array([])
+        self.train_pred = np.array([])
+        self.train_label = np.array([])
 
         self.epoch = 0
 
@@ -167,7 +170,15 @@ class Solver(object):
                 if isinstance(yhat, tuple):
                     loss = self.loss_fn(*yhat)
                 else:
-                    loss = self.loss_fn(yhat, torch.tensor(batch_y, dtype=torch.long).to(self.model.device))
+                    loss = self.loss_fn(yhat, batch_y.type("torch.LongTensor").to(self.model.device))
+
+                    #### EVALUATION DURING VALIDATION ####
+                    yhat_idx = torch.argsort(yhat, descending=True)
+                    self.train_pred = np.vstack([self.train_pred, yhat_idx.cpu().numpy()]) if self.train_pred.size else yhat_idx.cpu().numpy()
+                    self.train_label = np.append(self.train_label, batch_y)
+
+                    self.train_metric = self.evaluate(self.train_pred, self.train_label)
+                    self.train_metrics.append(self.train_metric)
 
                 self.train_batch_losses.append(torch.squeeze(loss).item())
                 loss.backward()
@@ -190,7 +201,10 @@ class Solver(object):
                                                                          desc=f'Vali. Batch (Epoch: {self.epoch})')):
                         # The train loader returns dim (batch_size, frames, nodes, features)
                         try:
-                            batch_x = torch.tensor(batch_x, dtype=torch.float32).permute(0,3,2,1)
+                            if isinstance(batch_x, torch.Tensor):
+                                batch_x = batch_x.type("torch.FloatTensor").permute(0,3,2,1)
+                            else:
+                                batch_x = torch.tensor(batch_x, dtype=torch.float32).permute(0,3,2,1)
                         except:
                             # For testing MLP on iris
                             batch_x = torch.tensor(batch_x, dtype=torch.float32)   
@@ -202,7 +216,7 @@ class Solver(object):
                         if isinstance(yhat, tuple):
                             loss = self.loss_fn(*yhat)
                         else:
-                            loss = self.loss_fn(yhat, torch.tensor(batch_y, dtype=torch.long).to(self.model.device))
+                            loss = self.loss_fn(yhat, batch_y.type("torch.LongTensor").to(self.model.device))
                             
                             #### EVALUATION DURING VALIDATION ####
                             yhat_idx = torch.argsort(yhat, descending=True)
@@ -248,7 +262,10 @@ class Solver(object):
                                                                  desc=f'Test. Batch (Epoch: {self.epoch})')):
                 # The train loader returns dim (batch_size, frames, nodes, features)
                 try:
-                    batch_x = torch.tensor(batch_x, dtype=torch.float32).permute(0,3,2,1)
+                    if isinstance(batch_x, torch.Tensor):
+                        batch_x = batch_x.type("torch.FloatTensor").permute(0,3,2,1)
+                    else:
+                        batch_x = torch.tensor(batch_x, dtype=torch.float32).permute(0,3,2,1)
                 except:
                     # For testing MLP on iris
                     batch_x = torch.tensor(batch_x, dtype=torch.float32)

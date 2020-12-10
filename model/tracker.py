@@ -25,9 +25,9 @@ class Tracker(object):
         """
         """
         super().__init__()
+
         if ex_name is not None:
             client = pymongo.MongoClient(db_url)
-
 
             self.ex_name = ex_name
             self.ex = Experiment(ex_name, interactive=interactive)
@@ -51,8 +51,6 @@ class Tracker(object):
             }
 
             self.local_path = f"./output/{self.date}/" if local_path is None else local_path
-
-            
 
             self.save_nth = 100
                                         
@@ -88,7 +86,7 @@ class Tracker(object):
         """
         if callable(mode):
             # Mode corresponds to an function            
-            self.ex.main(mode(self))
+            self.ex.main(mode(self, cfg))
             self.ex.run()
             
             #############
@@ -127,6 +125,10 @@ class Tracker(object):
         if hasattr(self.solver, "val_metric"):
             self.ex.log_scalar(f"{self.tag}val.top1", self.solver.val_metric[0])
             self.ex.log_scalar(f"{self.tag}val.top5", self.solver.val_metric[1])
+        
+        if hasattr(self.solver, "train_metric"):
+            self.ex.log_scalar(f"{self.tag}train.top1", self.solver.train_metric[0])
+            self.ex.log_scalar(f"{self.tag}train.top5", self.solver.train_metric[1])
 
     def track_train(self):
         """ Function that manage the tracking per trainings batch (called from the solver).
@@ -164,11 +166,11 @@ class Tracker(object):
             #### LOGGING ####
             self.log_config(f"{self.tag}optimzer", str(self.solver.optimizer))
             self.log_config(f"{self.tag}train_cfg", str(self.solver.train_cfg))  
-            self.log_config(f"{self.tag}train_size", str(np.array(self.solver.train_loader.dataset).shape))
+            self.log_config(f"{self.tag}train_size", str(len(self.solver.train_loader.dataset)))
             self.log_config(f"{self.tag}train_batch_size", str(self.solver.train_loader.batch_size))
 
             if self.solver.val_loader is not None:
-                self.log_config(f"{self.tag}val_size", str(np.array(self.solver.val_loader.dataset).shape))
+                self.log_config(f"{self.tag}val_size", str(len(self.solver.val_loader.dataset)))
                 self.log_config(f"{self.tag}val_batch_size", str(self.solver.val_loader.batch_size))
 
             self.log_config(f"{self.tag}model", str(self.solver.model))

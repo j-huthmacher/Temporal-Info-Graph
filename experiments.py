@@ -51,7 +51,7 @@ def experiment(tracker, config):
         if not config["stratify"] or config["stratify"] == {} :
             train, val = data.split(**config["data_split"]) # Default: 80% train, 10% val
         else:
-            train = data.stratify(**config["data_split"])
+            train = data.stratify(**config["stratify"])
             val = train # TODO: Implement stratify also for validation
 
         if "val_loader" in config["loader"]:

@@ -9,7 +9,7 @@ from model.temporal_info_graph import TemporalInfoGraph
 from model.mlp import MLP
 from model.tracker import Tracker
 from model.solver import Solver
-from experiments import exp_overfit, exp_test,exp_test_trained_enc, exp_tig_overfit
+from experiments import exp_overfit, exp_test,exp_test_trained_enc, exp_tig_overfit, exp_colab, experiment
 
 
 from data import KINECT_ADJACENCY
@@ -47,11 +47,48 @@ args = parser.parse_args()
 if args.train:    
     db_url = open(".mongoURL", "r").readline()
     torch.cuda.empty_cache()
+    name = "TIG_Test_ConfigurationProc"
+    config = {
+        "data": {
+            "name": "kinetic_skeleton_5000",
+            "path": "./content/"
+        },
+        "data_split": {
+            "lim": 500
+        },
+        # "stratify": {
+        #     "num": 5
+        # },
+        "loader": {
+            "batch_size": 32
+        },
+        "emb_tracking": False,
+        "encoder": {
+            "c_in": 2,
+            "c_out": 64,
+            "spec_out": 128,
+            "out": 2,
+            "dim_in": (36, 300),
+            "tempKernel": 32
+        },
+        "encoder_training": {
+            "verbose": True,
+            "n_epochs": 5
+        },
+        "classifier": {
+            "in_dim": 2,
+            "hidden_layers": [128, 512, 1024, 256]
+        },
+        "classifier_training": {
+            "verbose": True,
+            "n_epochs": 5
+        },
+    }
 
     # Training is executed from here
-    tracker = Tracker("TIG_Test_Local_vs_Colab", db_url, interactive=True)
+    tracker = Tracker(name, db_url, interactive=True)
     # tracker.track(exp_overfit)
-    tracker.track(exp_tig_overfit)
+    tracker.track(experiment, config)
 
 
 elif args.prep_data:

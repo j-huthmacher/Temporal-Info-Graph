@@ -1,6 +1,7 @@
 """ File containing different experiement configurations.
     @author: jhuthmacher
 """
+import io
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -83,12 +84,17 @@ def experiment(tracker, config):
                     emb_x = np.concatenate([emb_x, pred.detach().cpu().numpy()])
                 else:
                     emb_x = pred.detach().cpu().numpy()
-                
+
                 if emb_y.size:
                     emb_y = np.concatenate([emb_y, batch_y.numpy()])
                 else:
                     emb_y = batch_y.numpy()
 
+            buffer = io.BytesIO()
+            np.savez(buffer, x = emb_x, y= emb_y)
+            tracker.add_artifact(buffer.getvalue(), name="embeddings.npz")
+
+            #### Local Embedding Tracking ####
             np.savez(tracker.local_path+"embeddings", x = emb_x, y= emb_y)
 
         if not "classifier" in config and not isinstance(config["classifier"], dict):

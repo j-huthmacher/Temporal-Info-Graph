@@ -41,10 +41,11 @@ default = {
 
 def experiment(tracker, config):
     config = {**default, **config}
-    def run(_run):
+    def run(_run = None):
         log.info("Start experiment (Overfitting).")
-        tracker.run = _run
-        tracker.id = _run._id
+        if _run is not None:
+            tracker.run = _run
+            tracker.id = _run._id
         tracker.log_config(f"{tracker.tag}local_path", str(tracker.local_path))
 
         data = TIGDataset(**config["data"])
@@ -104,7 +105,16 @@ def experiment(tracker, config):
         tracker.tag = "MLP."
         # Use the trained model!
         num_classes = config["classifier"]["num_classes"] if "num_classes" in config["classifier"] else int(np.max(data.y) + 1) 
-        classifier = MLP(num_class=num_classes, encoder=solver.model, **config["classifier"]).cuda()
+        classifier = MLP(num_class=num_classes, encoder=None, **config["classifier"]).cuda()
+
+        emb_x = np.array(train, dtype=object)[:, 0]
+        y = np.array(train, dtype=object)[:, 1]
+
+        emb_x = solver.model(np.transpose(np.array(list(emb_x)),(0,3,2,1)),
+                             KINECT_ADJACENCY)[0].detach().cpu().numpy()
+
+        train_loader = DataLoader(list(zip(emb_x, y)), **config["loader"])
+        loader = [train_loader, train_loader]
 
         solver = Solver(classifier, loader, loss_fn = nn.CrossEntropyLoss())
 

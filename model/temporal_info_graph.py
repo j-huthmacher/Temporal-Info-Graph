@@ -282,6 +282,10 @@ class TemporalInfoGraph(nn.Module):
                 torch.Tensor, torch.Tensor: 
                 Dimensions: (batch, nodes), (batch, features, nodes)
         """
+        if not isinstance(X, torch.Tensor):
+            X = torch.tensor(X, dtype=torch.float32)
+        if not isinstance(A, torch.Tensor):
+            A = torch.tensor(A, dtype=torch.float32)
 
         # Features could be twice or more!
         X = X.type('torch.FloatTensor').to(self.device)

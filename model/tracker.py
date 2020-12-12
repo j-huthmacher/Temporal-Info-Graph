@@ -23,7 +23,7 @@ from visualization import class_contour, create_gif, plot_desc_loss_acc
 class Tracker(object):
     
     def __init__(self, ex_name = None, db_url = None, db="temporal_info_graph", interactive=False, config = {},
-                 local = True, local_path: str = None, track_descision = False):
+                 local = True, local_path: str = None, track_decision = False):
         """
         """
         super().__init__()
@@ -48,7 +48,7 @@ class Tracker(object):
         
         self.tag = ""
         self.local = local
-        self.track_descision = track_descision
+        self.track_decision = track_decision
 
         self.date = datetime.now().strftime("%d%m%Y_%H%M")
 
@@ -129,7 +129,7 @@ class Tracker(object):
         """ Function that manage the tracking per epoch (called from the solver).
         """
         if self.solver.phase == "train":
-            if isinstance(self.solver.model, MLP) and self.track_descision:
+            if isinstance(self.solver.model, MLP) and self.track_decision:
             #     fig = class_contour(np.array(self.solver.train_loader.dataset)[:, 0],
             #                         np.array(self.solver.train_loader.dataset)[:, 1],
             #                         self.solver.model, precision = 0.01,

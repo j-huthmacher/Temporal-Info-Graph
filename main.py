@@ -79,7 +79,7 @@ if args.train:
 
 
     # Training is executed from here
-    tracker = Tracker(name, db_url, interactive=True)
+    tracker = Tracker(name, db_url, interactive=True, **config["tracking"] if "tracking" in config else **{})
     tracker.track(experiment, config)
 
 

@@ -75,3 +75,5 @@ standard_stratified2:
   classifier_training:
     verbose: True
     n_epochs: 500
+  tracking:
+    track_decision: True

@@ -127,7 +127,7 @@ class TIGDataset(Dataset):
 
         return sets
 
-    def stratify(self, num: int, mode: str = "top-class"):
+    def stratify(self, num: int, mode: str = "top-class", lim=None):
         """
         """
         unique, counts = np.unique(self.y, return_counts=True)
@@ -137,7 +137,10 @@ class TIGDataset(Dataset):
         classes = sor[:num, 0] # Top n classes
         class_idx = np.where(np.isin(self.y, classes))
 
-        return list(zip(self.x[class_idx], self.y[class_idx]))
+        if lim is not None:
+            return list(zip(self.x[class_idx][:lim], self.y[class_idx][:lim]))
+        else:
+            return list(zip(self.x[class_idx], self.y[class_idx]))
     
     def __len__(self):
         return len(self.y)

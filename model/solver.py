@@ -12,6 +12,9 @@ from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm, trange
 import numpy as np
 
+from visualization.animation import create_gif
+from visualization.plots import class_contour
+
 from data import KINECT_ADJACENCY
 
 from model.loss import jensen_shannon_mi
@@ -149,45 +152,55 @@ class Solver(object):
             # Train #
             #########
             self.model.train()
-            for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.train_loader, total=len(self.train_loader), leave=False,
-                                                                 disable=False, desc=f'Trai. Batch (Epoch: {self.epoch})')):
+            self.phase = "train"
+            for self.batch, (self.batch_x, self.batch_y) in enumerate(tqdm(self.train_loader, total=len(self.train_loader), leave=False,
+                                                                      disable=False, desc=f'Trai. Batch (Epoch: {self.epoch})')):
                 # The train loader returns dim (batch_size, frames, nodes, features)
                 try:
-                    if isinstance(batch_x, torch.Tensor):
-                        batch_x = batch_x.type("torch.FloatTensor").permute(0,3,2,1)
+                    if isinstance(self.batch_x, torch.Tensor):
+                        self.batch_x = self.batch_x.type("torch.FloatTensor").permute(0,3,2,1)
                     else:
-                        batch_x = torch.tensor(batch_x, dtype=torch.float32).permute(0,3,2,1)
+                        self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32).permute(0,3,2,1)
                 except:
                     # For testing MLP on iris
-                    batch_x = torch.tensor(batch_x, dtype=torch.float32)            
+                    self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32)            
                 
                 self.optimizer.zero_grad() # https://stackoverflow.com/questions/48001598/why-do-we-need-to-call-zero-grad-in-pytorch
 
                 # For each action/dynamic graph in the batch we get the gbl and lcl representation
                 # yhat = gbl, lcl
-                yhat = self.model(batch_x, torch.tensor(KINECT_ADJACENCY))
+                yhat = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
                 
                 if isinstance(yhat, tuple):
                     loss = self.loss_fn(*yhat)
                 else:
-                    loss = self.loss_fn(yhat, batch_y.type("torch.LongTensor").to(self.model.device))
+                    loss = self.loss_fn(yhat, self.batch_y.type("torch.LongTensor").to(self.model.device))
 
                     #### EVALUATION DURING VALIDATION ####
                     yhat_idx = torch.argsort(yhat, descending=True)
-                    self.train_pred = np.vstack([self.train_pred, yhat_idx.cpu().numpy()]) if self.train_pred.size else yhat_idx.cpu().numpy()
-                    self.train_label = np.append(self.train_label, batch_y)
-
-                    self.train_metric = self.evaluate(self.train_pred, self.train_label)
-                    self.train_metrics.append(self.train_metric)
+                    self.train_pred = np.vstack([self.train_pred, yhat_idx.detach().cpu().numpy()]) if self.train_pred.size else yhat_idx.detach().cpu().numpy()
+                    self.train_label = np.append(self.train_label, self.batch_y)
 
                 self.train_batch_losses.append(torch.squeeze(loss).item())
                 loss.backward()
-                clip_grad_norm_(self.model.parameters(), 1)
+                # clip_grad_norm_(self.model.parameters(), 1)
                 self.optimizer.step()
 
+                
                 # if callable(track):
                 #     track("training")
+            
+            if not isinstance(yhat, tuple):
+                self.train_metric = self.evaluate(self.train_pred, self.train_label)
+                self.train_metrics.append(self.train_metric)
 
+            self.train_losses.append(np.mean(self.train_batch_losses) if len(self.train_batch_losses) > 0 else 0)
+            self.train_batch_losses = []
+
+            if callable(track):
+                track("epoch")
+
+            self.phase = "validation"
             if self.val_loader is not None:
                 # For disabling the gradient calculation -> Performance advantages
                 with torch.no_grad():
@@ -197,50 +210,50 @@ class Solver(object):
                     # Validate #
                     ############
                     self.model.eval()
-                    for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.val_loader, disable=False, leave=False,
-                                                                         desc=f'Vali. Batch (Epoch: {self.epoch})')):
+                    for self.batch, (self.batch_x, self.batch_y) in enumerate(tqdm(self.val_loader, disable=False, leave=False,
+                                                                              desc=f'Vali. Batch (Epoch: {self.epoch})')):
                         # The train loader returns dim (batch_size, frames, nodes, features)
                         try:
-                            if isinstance(batch_x, torch.Tensor):
-                                batch_x = batch_x.type("torch.FloatTensor").permute(0,3,2,1)
+                            if isinstance(self.batch_x, torch.Tensor):
+                                self.batch_x = self.batch_x.type("torch.FloatTensor").permute(0,3,2,1)
                             else:
-                                batch_x = torch.tensor(batch_x, dtype=torch.float32).permute(0,3,2,1)
+                                self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32).permute(0,3,2,1)
                         except:
                             # For testing MLP on iris
-                            batch_x = torch.tensor(batch_x, dtype=torch.float32)   
+                            self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32)   
                         
                         # For each action/dynamic graph in the batch we get the gbl and lcl representation
                         # yhat = gbl, lcl
-                        yhat = self.model(batch_x, torch.tensor(KINECT_ADJACENCY))
+                        yhat = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
                 
                         if isinstance(yhat, tuple):
                             loss = self.loss_fn(*yhat)
                         else:
-                            loss = self.loss_fn(yhat, batch_y.type("torch.LongTensor").to(self.model.device))
+                            loss = self.loss_fn(yhat, self.batch_y.type("torch.LongTensor").to(self.model.device))
                             
                             #### EVALUATION DURING VALIDATION ####
                             yhat_idx = torch.argsort(yhat, descending=True)
-                            self.val_pred = np.vstack([self.val_pred, yhat_idx.cpu().numpy()]) if self.val_pred.size else yhat_idx.cpu().numpy()
-                            self.val_label = np.append(self.val_label, batch_y)
+                            self.val_pred = np.vstack([self.val_pred, yhat_idx.detach().cpu().numpy()]) if self.val_pred.size else yhat_idx.detach().cpu().numpy()
+                            self.val_label = np.append(self.val_label, self.batch_y)
 
                         self.val_batch_losses.append(torch.squeeze(loss).item())
 
                     if not isinstance(yhat, tuple):
                         self.val_metric = self.evaluate(self.val_pred, self.val_label)
-
-                        self.val_metrics.append(self.val_metric )
+                        self.val_metrics.append(self.val_metric)
 
                         
                         # if callable(track):
                         #     track("validation")
 
-            # lr_scheduler.step()
+            # # lr_scheduler.step()
 
-            self.train_losses.append(np.mean(self.train_batch_losses) if len(self.train_batch_losses) > 0 else 0)
-            self.val_losses.append(np.mean(self.val_batch_losses) if len(self.val_batch_losses) > 0 else 0)
+            
+                self.val_losses.append(np.mean(self.val_batch_losses) if len(self.val_batch_losses) > 0 else 0)
+                self.val_batch_losses = []
 
-            if callable(track):
-                track("epoch")
+                if callable(track):
+                    track("epoch")
             
     def test(self, test_config: dict = None, model: nn.Module = None, test_loader = None,
              track = None):
@@ -258,22 +271,22 @@ class Solver(object):
         
             #### TEST ####
             self.model.eval()
-            for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.test_loader, disable=False, leave=False,
+            for self.batch, (self.batch_x, self.batch_y) in enumerate(tqdm(self.test_loader, disable=False, leave=False,
                                                                  desc=f'Test. Batch (Epoch: {self.epoch})')):
                 # The train loader returns dim (batch_size, frames, nodes, features)
                 try:
-                    if isinstance(batch_x, torch.Tensor):
-                        batch_x = batch_x.type("torch.FloatTensor").permute(0,3,2,1)
+                    if isinstance(self.batch_x, torch.Tensor):
+                        self.batch_x = self.batch_x.type("torch.FloatTensor").permute(0,3,2,1)
                     else:
-                        batch_x = torch.tensor(batch_x, dtype=torch.float32).permute(0,3,2,1)
+                        self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32).permute(0,3,2,1)
                 except:
                     # For testing MLP on iris
-                    batch_x = torch.tensor(batch_x, dtype=torch.float32)
+                    self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32)
                         
                 # For each action/dynamic graph in the batch we get the gbl and lcl representation
                 # yhat = gbl, lcl
                 # yhat stochastic vector
-                yhat = self.model(batch_x, torch.tensor(KINECT_ADJACENCY))
+                yhat = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
                 
                 if isinstance(yhat, tuple):
                     # loss = self.loss_fn(*yhat) 
@@ -282,13 +295,13 @@ class Solver(object):
                 else:
                     yhat_idx = torch.argsort(yhat, descending=True)
                     
-                    self.predictions = np.vstack([self.predictions, yhat_idx.cpu().numpy()]) if self.predictions.size else yhat_idx.cpu().numpy()
-                    self.labels = np.append(self.labels, batch_y)
+                    self.predictions = np.vstack([self.predictions, yhat_idx.detach().cpu().numpy()]) if self.predictions.size else yhat_idx.detach().cpu().numpy()
+                    self.labels = np.append(self.labels, self.batch_y)
 
                     # self.predictions.append(yhat_idx.numpy())
-                    # self.labels.append(batch_y)
+                    # self.labels.append(self.batch_y)
 
-                    # pred_labels = torch.stack([yhat, batch_y], 1)
+                    # pred_labels = torch.stack([yhat, self.batch_y], 1)
 
                     # if self.results is None:
                     #     self.results = pred_labels
@@ -307,11 +320,11 @@ class Solver(object):
         """
 
         k = 1  # Top-k
-        correct = np.sum(np.isin(labels, np.asarray(predictions)[:,:k]))
+        correct = np.sum([l in pred for l, pred in zip(labels, np.asarray(predictions)[:,:k])])
         top1 = (correct/len(labels))
 
         k = 5  # Top-k
-        correct = np.sum(np.isin(labels, np.asarray(predictions)[:,:k]))
+        correct = np.sum([l in pred for l, pred in zip(labels, np.asarray(predictions)[:,:k])])
         top5 = (correct/len(labels))
 
         # accuracy 

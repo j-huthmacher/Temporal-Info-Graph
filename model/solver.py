@@ -93,7 +93,7 @@ class Solver(object):
         else:
             self.model = model
             self.optimizer = (optim.Adam(
-                    model.parameters(), 
+                    model.parameters(),
                     **self.train_cfg["optimizer"],
                 ) 
                 if optimizer is None 
@@ -160,10 +160,10 @@ class Solver(object):
                     if isinstance(self.batch_x, torch.Tensor):
                         self.batch_x = self.batch_x.type("torch.FloatTensor").permute(0,3,2,1)
                     else:
-                        self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32).permute(0,3,2,1)
+                        self.batch_x = torch.tensor(self.batch_x, dtype=torch.long).permute(0,3,2,1)
                 except:
-                    # For testing MLP on iris
-                    self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32)            
+                    if not isinstance(self.batch_x, torch.Tensor):
+                        self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32)            
                 
                 self.optimizer.zero_grad() # https://stackoverflow.com/questions/48001598/why-do-we-need-to-call-zero-grad-in-pytorch
 
@@ -174,16 +174,21 @@ class Solver(object):
                 if isinstance(yhat, tuple):
                     loss = self.loss_fn(*yhat)
                 else:
-                    loss = self.loss_fn(yhat, self.batch_y.type("torch.LongTensor").to(self.model.device))
+                    if not isinstance(self.batch_y, torch.Tensor):
+                        self.batch_y = torch.tensor(self.batch_x, dtype=torch.long).to(self.model.device)
+                    else:
+                        self.batch_y = self.batch_y.type("torch.LongTensor").to(self.model.device)
+
+                    loss = self.loss_fn(yhat, self.batch_y)
 
                     #### EVALUATION DURING VALIDATION ####
                     yhat_idx = torch.argsort(yhat, descending=True)
                     self.train_pred = np.vstack([self.train_pred, yhat_idx.detach().cpu().numpy()]) if self.train_pred.size else yhat_idx.detach().cpu().numpy()
-                    self.train_label = np.append(self.train_label, self.batch_y)
+                    self.train_label = np.append(self.train_label, self.batch_y.detach().cpu().numpy())
 
                 self.train_batch_losses.append(torch.squeeze(loss).item())
                 loss.backward()
-                # clip_grad_norm_(self.model.parameters(), 1)
+                clip_grad_norm_(self.model.parameters(), 1)
                 self.optimizer.step()
 
                 
@@ -219,8 +224,9 @@ class Solver(object):
                             else:
                                 self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32).permute(0,3,2,1)
                         except:
-                            # For testing MLP on iris
-                            self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32)   
+                            if not isinstance(self.batch_x, torch.Tensor):
+                                self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32)
+                            
                         
                         # For each action/dynamic graph in the batch we get the gbl and lcl representation
                         # yhat = gbl, lcl
@@ -229,12 +235,17 @@ class Solver(object):
                         if isinstance(yhat, tuple):
                             loss = self.loss_fn(*yhat)
                         else:
-                            loss = self.loss_fn(yhat, self.batch_y.type("torch.LongTensor").to(self.model.device))
+                            if not isinstance(self.batch_y, torch.Tensor):
+                                self.batch_y = torch.tensor(self.batch_x, dtype=torch.float32).to(self.model.device)
+                            else:
+                                self.batch_y = self.batch_y.type("torch.LongTensor").to(self.model.device)
+
+                            loss = self.loss_fn(yhat, self.batch_y)
                             
                             #### EVALUATION DURING VALIDATION ####
                             yhat_idx = torch.argsort(yhat, descending=True)
                             self.val_pred = np.vstack([self.val_pred, yhat_idx.detach().cpu().numpy()]) if self.val_pred.size else yhat_idx.detach().cpu().numpy()
-                            self.val_label = np.append(self.val_label, self.batch_y)
+                            self.val_label = np.append(self.val_label, self.batch_y.detach().cpu().numpy())
 
                         self.val_batch_losses.append(torch.squeeze(loss).item())
 
@@ -296,7 +307,7 @@ class Solver(object):
                     yhat_idx = torch.argsort(yhat, descending=True)
                     
                     self.predictions = np.vstack([self.predictions, yhat_idx.detach().cpu().numpy()]) if self.predictions.size else yhat_idx.detach().cpu().numpy()
-                    self.labels = np.append(self.labels, self.batch_y)
+                    self.labels = np.append(self.labels, self.batch_y.detach().cpu().numpy())
 
                     # self.predictions.append(yhat_idx.numpy())
                     # self.labels.append(self.batch_y)

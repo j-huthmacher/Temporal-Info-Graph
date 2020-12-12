@@ -5,23 +5,25 @@ import io
 from typing import Any
 from pathlib import Path
 from datetime import datetime
-
+import json
 import torch
 import pymongo
 import gridfs
 import numpy as np
+import matplotlib.pyplot as plt
 
 from sacred import Experiment
 from sacred.observers import MongoObserver
 
-from model.solver import Solver
+from model import Solver, MLP
 from config.config import log
+from visualization import class_contour, create_gif, plot_desc_loss_acc
 
 
 class Tracker(object):
     
     def __init__(self, ex_name = None, db_url = None, db="temporal_info_graph", interactive=False, config = {},
-                 local = True, local_path: str = None):
+                 local = True, local_path: str = None, track_descision = False):
         """
         """
         super().__init__()
@@ -40,23 +42,31 @@ class Tracker(object):
             self.db = client[db]
             self.interactive = interactive
             self.id = None
-            self.tag = ""
-            self.local = local
+            self.run = None
+        else:
+            self.ex = None
+        
+        self.tag = ""
+        self.local = local
+        self.track_descision = track_descision
 
-            self.date = datetime.now().strftime("%d%m%Y_%H%M")
+        self.date = datetime.now().strftime("%d%m%Y_%H%M")
 
-            self.checkpoint_dict = {
+        self.checkpoint_dict = {
                 "model_params": {},
                 "optim_params": {},
             }
 
-            self.local_path = f"./output/{self.date}/" if local_path is None else local_path
+        self.local_path = f"./output/{self.date}/" if local_path is None else local_path
+        Path(self.local_path).mkdir(parents=True, exist_ok=True)
 
-            self.save_nth = 100
+        self.save_nth = 100
                                         
-            # Assign model config
-            self.__dict__ = {**self.__dict__, **config}
-            self.run = None
+        # Assign model config
+        self.__dict__ = {**self.__dict__, **config}
+        
+
+        self.cfg = {}
 
 
     
@@ -85,9 +95,13 @@ class Tracker(object):
                     the tracking task to the corresponding function.
         """
         if callable(mode):
-            # Mode corresponds to an function            
-            self.ex.main(mode(self, cfg))
-            self.ex.run()
+            self.cfg = cfg
+            if self.ex is not None:
+                # Mode corresponds to an function       
+                self.ex.main(mode(self, cfg))
+                self.ex.run()
+            else:
+                mode(self, cfg)
             
             #############
             # After run #
@@ -100,8 +114,7 @@ class Tracker(object):
             # Important values in config get overwritten!!! I.e. track after run is done
 
             if self.local:
-                self.track_locally()     
-            
+                self.track_locally()                 
 
         elif mode == "epoch":
             self.track_epoch()            
@@ -115,45 +128,67 @@ class Tracker(object):
     def track_epoch(self):
         """ Function that manage the tracking per epoch (called from the solver).
         """
+        if self.solver.phase == "train":
+            if isinstance(self.solver.model, MLP) and self.track_descision:
+            #     fig = class_contour(np.array(self.solver.train_loader.dataset)[:, 0],
+            #                         np.array(self.solver.train_loader.dataset)[:, 1],
+            #                         self.solver.model, precision = 0.01,
+            #                         title=f"MLP Decision Boundary - Epoch: {self.solver.epoch}")
+                fig = plot_desc_loss_acc(np.array(self.solver.train_loader.dataset)[:, 0],
+                                         np.array(self.solver.train_loader.dataset)[:, 1],
+                                         self.solver.model,
+                                         self.solver.train_losses,
+                                         np.array(self.solver.train_metrics)[:, 0],
+                                         n_epochs = self.solver.train_cfg["n_epochs"],
+                                         title=f"MLP Decision Boundary - Epoch: {self.solver.epoch}")
+                plt.close()
+                create_gif(fig, path=self.local_path+"MLP.decision.boundaries.gif",
+                           fill=(self.solver.train_cfg["n_epochs"] - 1 != self.solver.epoch))
         
-        if self.solver.epoch % self.save_nth == 0:
-            self.track_checkpoint() 
+            if self.ex is not None:        
+                if self.solver.epoch % self.save_nth == 0:
+                    self.track_checkpoint() 
 
-        self.ex.log_scalar(f"{self.tag}loss.epoch.train", self.solver.train_losses[self.solver.epoch], self.solver.epoch)
-        self.ex.log_scalar(f"{self.tag}loss.epoch.val", self.solver.val_losses[self.solver.epoch], self.solver.epoch)
+                self.ex.log_scalar(f"{self.tag}loss.epoch.train", self.solver.train_losses[self.solver.epoch], self.solver.epoch)
+                if hasattr(self.solver, "train_metric"):
+                    self.ex.log_scalar(f"{self.tag}train.top1", self.solver.train_metric[0])
+                    self.ex.log_scalar(f"{self.tag}train.top5", self.solver.train_metric[1])
 
-        if hasattr(self.solver, "val_metric"):
-            self.ex.log_scalar(f"{self.tag}val.top1", self.solver.val_metric[0])
-            self.ex.log_scalar(f"{self.tag}val.top5", self.solver.val_metric[1])
-        
-        if hasattr(self.solver, "train_metric"):
-            self.ex.log_scalar(f"{self.tag}train.top1", self.solver.train_metric[0])
-            self.ex.log_scalar(f"{self.tag}train.top5", self.solver.train_metric[1])
+        if self.solver.phase == "validation" and self.ex is not None:
+            self.ex.log_scalar(f"{self.tag}loss.epoch.val", self.solver.val_losses[self.solver.epoch], self.solver.epoch)
+
+            if hasattr(self.solver, "val_metric"):
+                self.ex.log_scalar(f"{self.tag}val.top1", self.solver.val_metric[0])
+                self.ex.log_scalar(f"{self.tag}val.top5", self.solver.val_metric[1])
+            
+            
 
     def track_train(self):
         """ Function that manage the tracking per trainings batch (called from the solver).
         """
         if hasattr(self, "intermediate_tracking") and not self.intermediate_tracking:
             return
-
-        self.ex.log_scalar(f"{self.tag}.loss.batch.train.{self.solver.epoch}", self.solver.train_batch_losses[self.solver.batch], self.solver.batch)
+        if self.ex is not None: 
+            self.ex.log_scalar(f"{self.tag}.loss.batch.train.{self.solver.epoch}",
+                               self.solver.train_batch_losses[self.solver.batch], self.solver.batch)
     
     def track_validation(self):
         """ Function that manage the tracking per validation batch (called from the solver).
         """
         if hasattr(self, "intermediate_tracking") and not self.intermediate_tracking:
             return
-
-        self.ex.log_scalar(f"{self.tag}.loss.batch.val.{self.solver.epoch}", self.solver.val_batch_losses[self.solver.batch], self.solver.batch)
+        if self.ex is not None: 
+            self.ex.log_scalar(f"{self.tag}.loss.batch.val.{self.solver.epoch}",
+                               self.solver.val_batch_losses[self.solver.batch], self.solver.batch)
     
     def track_evaluation(self):
         """ Function that manage the tracking per validation batch (called from the solver).
         """
         if hasattr(self, "intermediate_tracking") and not self.intermediate_tracking:
             return
-
-        self.ex.log_scalar(f"{self.tag}test.top1", self.solver.metric[0])
-        self.ex.log_scalar(f"{self.tag}test.top5", self.solver.metric[1])
+        if self.ex is not None: 
+            self.ex.log_scalar(f"{self.tag}test.top1", self.solver.metric[0])
+            self.ex.log_scalar(f"{self.tag}test.top5", self.solver.metric[1])
 
     def track_traning(self, train):
         """
@@ -162,23 +197,24 @@ class Tracker(object):
             # Extract solver
             self.solver = train.__self__            
             train(*args, track = self.track)
+            
+            if self.ex is not None: 
+                #### LOGGING ####
+                
+                self.log_config(f"{self.tag}optimzer", str(self.solver.optimizer))
+                self.log_config(f"{self.tag}train_cfg", str(self.solver.train_cfg))  
+                self.log_config(f"{self.tag}train_size", str(len(self.solver.train_loader.dataset)))
+                self.log_config(f"{self.tag}train_batch_size", str(self.solver.train_loader.batch_size))
+                self.log_config(f"{self.tag}model", str(self.solver.model))
 
-            #### LOGGING ####
-            self.log_config(f"{self.tag}optimzer", str(self.solver.optimizer))
-            self.log_config(f"{self.tag}train_cfg", str(self.solver.train_cfg))  
-            self.log_config(f"{self.tag}train_size", str(len(self.solver.train_loader.dataset)))
-            self.log_config(f"{self.tag}train_batch_size", str(self.solver.train_loader.batch_size))
+                buffer = io.BytesIO()
+                torch.save(self.solver.model, buffer)
 
-            if self.solver.val_loader is not None:
+                self.add_artifact(buffer.getvalue(), name=f"{self.ex_name}.pt")
+
+            if self.solver.phase == "validation":
                 self.log_config(f"{self.tag}val_size", str(len(self.solver.val_loader.dataset)))
                 self.log_config(f"{self.tag}val_batch_size", str(self.solver.val_loader.batch_size))
-
-            self.log_config(f"{self.tag}model", str(self.solver.model))
-
-            buffer = io.BytesIO()
-            torch.save(self.solver.model, buffer)
-
-            self.add_artifact(buffer.getvalue(), name=f"{self.ex_name}.pt")
 
             self.track_locally()
                
@@ -190,12 +226,13 @@ class Tracker(object):
             self.solver = test.__self__            
             test(*args, track = self.track)  
 
-            if self.solver.test_loader is not None:
-                self.log_config(f"{self.tag}test_cfg", str(self.solver.test_cfg))
-                self.log_config(f"{self.tag}test_size", str(np.array(self.solver.test_loader.dataset).shape))
-                self.log_config(f"{self.tag}test_batch_size", str(self.solver.test_loader.batch_size))
+            if self.ex is not None: 
+                if self.solver.test_loader is not None:
+                    self.log_config(f"{self.tag}test_cfg", str(self.solver.test_cfg))
+                    self.log_config(f"{self.tag}test_size", str(np.array(self.solver.test_loader.dataset).shape))
+                    self.log_config(f"{self.tag}test_batch_size", str(self.solver.test_loader.batch_size))
 
-            self.log_config(f"{self.tag}model", str(self.solver.model))          
+                self.log_config(f"{self.tag}model", str(self.solver.model))          
         
         return inner
 
@@ -204,14 +241,26 @@ class Tracker(object):
         """
         Path(self.local_path).mkdir(parents=True, exist_ok=True)
 
-        np.save(f'{self.local_path}/TIG_{self.tag}_train_losses.npy', self.solver.train_losses)
-        np.save(f'{self.local_path}/TIG_{self.tag}_val_losses.npy', self.solver.val_losses)
-        
-        if hasattr(self.solver, "metric"):
-            np.save(f'{self.local_path}/TIG_{self.tag}_top1.npy', self.solver.metric[0])
-            np.save(f'{self.local_path}/TIG_{self.tag}_top5.npy', self.solver.metric[1])
+        with open(f'{self.local_path}/config.json', 'w') as fp:
+            json.dump(self.cfg, fp)
 
-        torch.save(self.model, f'{self.local_path}/TIG_{self.tag}.pt')
+        np.save(f'{self.local_path}/TIG_{self.tag}train_losses.npy', self.solver.train_losses)
+        
+        if hasattr(self.solver, "train_metric"):
+            np.save(f"{self.local_path}/TIG_{self.tag}train.metrics.npy", self.solver.train_metrics)
+
+
+        np.save(f'{self.local_path}/TIG_{self.tag}val_losses.npy', self.solver.val_losses)
+
+        if hasattr(self.solver, "val_metric"):
+            np.save(f"{self.local_path}/TIG_{self.tag}val.metrics.npy", self.solver.val_metrics)
+        
+        #### Test / Evaluation Metrics ####
+        if hasattr(self.solver, "metric"):
+            np.save(f'{self.local_path}/TIG_{self.tag}top1.npy', self.solver.metric[0])
+            np.save(f'{self.local_path}/TIG_{self.tag}top5.npy', self.solver.metric[1])
+
+        torch.save(self.model, f'{self.local_path}/TIG_{self.tag.replace(".", "")}.pt')
         log.info(f"Experiment stored at '{self.local_path}")
 
     def track_checkpoint(self):
@@ -308,6 +357,9 @@ class Tracker(object):
                     The configuration that should be stored in the DB.
                     For instance, a dictionary or a simple string.
         """
+        if self.ex is None:
+            return
+        
         if self.id is None:
             raise ValueError("Experiment ID is not set!")
         
@@ -325,7 +377,9 @@ class Tracker(object):
                 name: str
                     Name of the artifact.
         """
-
+        if self.ex is None:
+            return
+    
         db_filename = "artifact://{}/{}/{}".format(self.observer.runs.name, self.id, name)
         
         result = self.db["fs.files"].find_one({"name": self.observer.fs.delete(db_filename)})

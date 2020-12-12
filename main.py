@@ -31,6 +31,9 @@ parser.add_argument('--config', dest='config',
 parser.add_argument('--name', dest='name',
                     help='Name of the experiment.')
 
+parser.add_argument('--tracking', dest='tracking', default="remote",
+                    help='[remote, local], default: remote')
+
 parser.add_argument('--train', dest='train', action='store_true',
                     help='Flag to select trainings mode.')
 
@@ -77,9 +80,23 @@ if args.train:
             name += "_standard"
             config = yaml.load(file, Loader=yaml.FullLoader)["standard"]
 
+    tracking = {}
+    if args.tracking == "remote":
+        tracking = {
+            "ex_name": name, 
+            "db_url": db_url,
+            "interactive": True
+        }
 
     # Training is executed from here
-    tracker = Tracker(name, db_url, interactive=True, **config["tracking"] if "tracking" in config else **{})
+    if "tracking" in config:
+        tracker = Tracker(**{**tracking, **config["tracking"]})
+    else:
+        tracker = Tracker(**tracking)
+
+    torch.manual_seed(0)
+    config["seed"] = 0
+
     tracker.track(experiment, config)
 
 

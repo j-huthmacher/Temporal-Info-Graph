@@ -37,18 +37,18 @@ standard_stratified:
     c_in: 2
     c_out: 64
     spec_out: 128
-    out: 2
+    out: 16
     dim_in: [36, 300]
     tempKernel: 32
   encoder_training:
     verbose: True
-    n_epochs: 5
+    n_epochs: 8000
   classifier: 
-    in_dim: 2
+    in_dim: 16
     hidden_layers: [128, 512, 1024, 256]
   classifier_training:
     verbose: True
-    n_epochs: 5
+    n_epochs: 500
 
 standard_stratified2:
   data:

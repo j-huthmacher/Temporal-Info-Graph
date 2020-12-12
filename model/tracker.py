@@ -2,6 +2,7 @@
     @author: jhuthmacher
 """
 import io
+import os
 from typing import Any
 from pathlib import Path
 from datetime import datetime
@@ -18,6 +19,7 @@ from sacred.observers import MongoObserver
 from model import Solver, MLP
 from config.config import log
 from visualization import class_contour, create_gif, plot_desc_loss_acc
+from data import KINECT_ADJACENCY
 
 
 class Tracker(object):
@@ -101,7 +103,7 @@ class Tracker(object):
                 self.ex.main(mode(self, cfg))
                 self.ex.run()
             else:
-                mode(self, cfg)
+                mode(self, cfg)()
             
             #############
             # After run #
@@ -134,8 +136,16 @@ class Tracker(object):
             #                         np.array(self.solver.train_loader.dataset)[:, 1],
             #                         self.solver.model, precision = 0.01,
             #                         title=f"MLP Decision Boundary - Epoch: {self.solver.epoch}")
-                fig = plot_desc_loss_acc(np.array(self.solver.train_loader.dataset)[:, 0],
-                                         np.array(self.solver.train_loader.dataset)[:, 1],
+                emb_x = np.array(self.solver.train_loader.dataset, dtype=object)[:, 0]
+                emb_y = np.array(self.solver.train_loader.dataset, dtype=object)[:, 1]
+                # if self.solver.model.encoder is not None:
+                #     with torch.no_grad():
+                #         self.solver.model.eval()
+                #         emb_x = self.solver.model.encoder(np.transpose(np.array(list(emb_x)),(0,3,2,1)),
+                #                                           KINECT_ADJACENCY)[0].detach().cpu().numpy()
+
+                fig = plot_desc_loss_acc(emb_x,
+                                         emb_y,
                                          self.solver.model,
                                          self.solver.train_losses,
                                          np.array(self.solver.train_metrics)[:, 0],
@@ -161,8 +171,6 @@ class Tracker(object):
                 self.ex.log_scalar(f"{self.tag}val.top1", self.solver.val_metric[0])
                 self.ex.log_scalar(f"{self.tag}val.top5", self.solver.val_metric[1])
             
-            
-
     def track_train(self):
         """ Function that manage the tracking per trainings batch (called from the solver).
         """
@@ -242,7 +250,12 @@ class Tracker(object):
         Path(self.local_path).mkdir(parents=True, exist_ok=True)
 
         with open(f'{self.local_path}/config.json', 'w') as fp:
-            json.dump(self.cfg, fp)
+            json.dump({
+                **self.cfg, 
+                **{
+                    "exec_dir": os.getcwd(),
+                    "optimzer": str(self.solver.optimizer)
+                    }}, fp)
 
         np.save(f'{self.local_path}/TIG_{self.tag}train_losses.npy', self.solver.train_losses)
         
@@ -272,7 +285,7 @@ class Tracker(object):
                 'epoch': self.solver.epoch,
                 'model_state_dict': self.solver.model.state_dict(),
                 'optimizer_state_dict': self.solver.optimizer.state_dict(),
-                'loss': self.solver.val_losses[-1],
+                'loss': self.solver.val_losses[-1] if len(self.solver.val_losses) > 0 else "-",
             }
            }
         

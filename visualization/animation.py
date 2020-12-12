@@ -38,7 +38,9 @@ def create_gif(fig, path, fill=True):
     if not fill:
         im.save(fp=path, format='GIF', append_images=images,
                 save_all=True, duration=200, loop=0)
+        fig.savefig(path.replace(".gif", ".final.png"), dpi=150)                
         images.clear()
+
     
 
     # # filepaths

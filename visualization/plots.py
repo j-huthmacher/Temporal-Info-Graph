@@ -19,7 +19,7 @@ def plot_emb(x, y, dim=2, title="", use_pca = True, ax = None):
     """
     """
     if use_pca:
-        pca = PCA(n_components=dim)
+        pca = PCA(n_components=dim, random_state=123)
         x = pca.fit_transform(x)
     
     if ax is None:
@@ -47,11 +47,18 @@ def class_contour(x, y, clf, precision = 0.02, title="", ax = None):
     if len(y.shape) != 2:
         y = np.array(list(y))
 
+    if x.shape[1] > 2:
+        pca = PCA(n_components=2, random_state=123)
+        x = pca.fit_transform(x) 
+        raise ValueError("Too much dimensions! (Only 2D model is possible)")
+
+
     h = precision  # step size in the mesh
     x_min, x_max = x[:, 0].min() - max(h, 0.05), x[:, 0].max() + max(h, 0.05)
     y_min, y_max = x[:, 1].min() - max(h, 0.05), x[:, 1].max() + max(h, 0.05)
     xx, yy = np.meshgrid(np.arange(x_min, x_max, h),
-                        np.arange(y_min, y_max, h))
+                         np.arange(y_min, y_max, h))
+
         
     Z = clf(torch.tensor(np.c_[xx.ravel(), yy.ravel()], dtype=torch.float32)).detach().cpu().numpy()
    
@@ -68,14 +75,14 @@ def class_contour(x, y, clf, precision = 0.02, title="", ax = None):
     # z = z[:-1, :-1]
     # levels = MaxNLocator(nbins=15).tick_values(Z.min(), Z.max())
 
-    ax.contourf(xx, yy, Z, alpha=0.8, cmap="coolwarm")
+    ax.contourf(xx, yy, Z, alpha=0.8, cmap=sns.color_palette("Spectral", as_cmap=True))
 
     # Z2 = Z[:, 1] * -1 # contour only for class 1
     # Z2 = Z2.reshape(xx.shape)
     # ax.contourf(xx, yy, Z2, alpha=0.8, cmap="viridis")
 
 
-    ax.scatter(x[:, 0], x[:, 1], c=y.astype(int), cmap="coolwarm", edgecolors='w')
+    ax.scatter(x[:, 0], x[:, 1], c=y.astype(int), cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
 
     ax.set_title(title)
 

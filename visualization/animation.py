@@ -13,7 +13,6 @@ import matplotlib.animation
 import numpy as np
 import pandas as pd
 
-import glob
 from PIL import Image
 
 from copy import copy, deepcopy

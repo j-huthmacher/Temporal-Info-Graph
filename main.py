@@ -4,6 +4,8 @@ import argparse
 from pathlib import Path
 import torch
 import torch.nn as nn
+import yaml
+import json
 
 from model.temporal_info_graph import TemporalInfoGraph
 from model.mlp import MLP
@@ -22,6 +24,12 @@ from config.config import log
 # Set up CLI #
 ##############
 parser = argparse.ArgumentParser(prog='tig', description='Temporal Info Graph')
+
+parser.add_argument('--config', dest='config',
+                    help='Defines which configuration should be usd. Can be a name, .json or .yml file.')
+
+parser.add_argument('--name', dest='name',
+                    help='Name of the experiment.')
 
 parser.add_argument('--train', dest='train', action='store_true',
                     help='Flag to select trainings mode.')
@@ -47,62 +55,47 @@ args = parser.parse_args()
 if args.train:    
     db_url = open(".mongoURL", "r").readline()
     torch.cuda.empty_cache()
-    name = "TIG_Test_ConfigurationProc"
-    config = {
-        "data": {
-            "name": "kinetic_skeleton_5000",
-            "path": "./content/"
-        },
-        "data_split": {
-            "lim": 500
-        },
-        # "stratify": {
-        #     "num": 5
-        # },
-        "loader": {
-            "batch_size": 32
-        },
-        "emb_tracking": False,
-        "encoder": {
-            "c_in": 2,
-            "c_out": 64,
-            "spec_out": 128,
-            "out": 2,
-            "dim_in": (36, 300),
-            "tempKernel": 32
-        },
-        "encoder_training": {
-            "verbose": True,
-            "n_epochs": 5
-        },
-        "classifier": {
-            "in_dim": 2,
-            "hidden_layers": [128, 512, 1024, 256]
-        },
-        "classifier_training": {
-            "verbose": True,
-            "n_epochs": 5
-        },
-    }
+
+    name = "TIG_Experiment"
+    config = {}
+
+    if args.config is not None:
+        if ".yml" in args.config or ".yaml" in args.config:
+            with open(args.config) as file:
+                name = args.name
+                config = yaml.load(file, Loader=yaml.FullLoader)
+        elif ".json" in args.config:
+            with open(args.config) as file:
+                name = args.name
+                config = json.load(file, Loader=yaml.FullLoader)
+        else:
+            with open("./experiments/config_repo.yml") as file:
+                name += f"_{args.config}"
+                config = yaml.load(file, Loader=yaml.FullLoader)[args.config]
+    else:
+        with open("./experiments/config_repo.yml") as file:
+            name += "_standard"
+            config = yaml.load(file, Loader=yaml.FullLoader)["standard"]
+
 
     # Training is executed from here
     tracker = Tracker(name, db_url, interactive=True)
-    # tracker.track(exp_overfit)
     tracker.track(experiment, config)
 
 
 elif args.prep_data:
+    pass
     # Prepare data 
-    data_paths = [
-        "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics_train/",
-        "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics_val/"
-    ]
+    # data_paths = [
+    #     "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics_train/",
+    #     "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics_val/"
+    # ]
 
-    output = "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/"
+    # output = "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/"
 
-    log.info("Process data")
+    # log.info("Process data")
 
-    _ = TIGDataset(paths = data_paths, output=output, verbose=True)
+    # _ = TIGDataset(paths = data_paths, output=output, verbose=True)
 
-    log.info("Data set processed")
+    # log.info("Data set processed")
 

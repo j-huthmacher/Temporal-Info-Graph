@@ -6,11 +6,15 @@
 """
 from typing import Any
 
+import io
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import matplotlib.animation
 import numpy as np
 import pandas as pd
+
+import glob
+from PIL import Image
 
 from copy import copy, deepcopy
 from data import KINECT_ADJACENCY
@@ -19,6 +23,33 @@ plt.rcParams["animation.html"] = "jshtml"
 plt.rcParams['figure.dpi'] = 100  
 plt.style.use('seaborn')
 
+images = []
+
+def create_gif(fig, path, fill=True):
+    """
+    """
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png')
+    buf.seek(0)
+
+    im = Image.open(buf)
+
+    images.append(im)
+
+    if not fill:
+        im.save(fp=path, format='GIF', append_images=images,
+                save_all=True, duration=200, loop=0)
+        images.clear()
+    
+
+    # # filepaths
+    # fp_in = "/path/to/image_*.png"
+    # fp_out = "/path/to/image.gif"
+
+    # https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#gif
+    # img, *imgs = [Image.open(f) for f in sorted(glob.glob(fp_in))]
+    # img.save(fp=fp_out, format='GIF', append_images=imgs,
+    #          save_all=True, duration=200, loop=0)
 
 def animate_skeleton(data: pd.DataFrame, annot: bool = False, lim_frames: Any = None):
     """ Function to animate a skeleton.

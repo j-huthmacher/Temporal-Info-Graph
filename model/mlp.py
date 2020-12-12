@@ -30,11 +30,11 @@ class MLP(nn.Module):
 
             self.encoder = encoder
 
-        layers = [nn.Linear(in_dim, hidden_layers[0]), nn.LeakyReLU(inplace=True)]
+        layers = [nn.Linear(in_dim, hidden_layers[0]), nn.Tanh()]
 
         for hl in range(1, len(hidden_layers)):
             layers.append(nn.Linear(hidden_layers[hl-1], hidden_layers[hl]))
-            layers.append(nn.LeakyReLU(inplace=True))
+            layers.append(nn.Tanh())
         
         layers.append(nn.Linear(hidden_layers[-1], num_class))
         # layers.append(nn.Softmax(dim=1))  # Normalize over feature dimension.
@@ -62,7 +62,7 @@ class MLP(nn.Module):
             torch.nn.init.xavier_uniform(m.weight)
             m.bias.data.fill_(0.01)
 
-    def forward(self, x: torch.Tensor, A: torch.Tensor):
+    def forward(self, x: torch.Tensor, A: torch.Tensor = None):
         """ Forward function
 
             Parameters:
@@ -73,7 +73,7 @@ class MLP(nn.Module):
         """
         x = x.type('torch.FloatTensor').to(self.device)
 
-        if self.encoder is not None: 
+        if self.encoder is not None and A is not None:
             x, _ = self.encoder(x, A)
 
         x = self.layers(x)

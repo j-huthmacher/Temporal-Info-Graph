@@ -60,6 +60,7 @@ class Solver(object):
         self.train_cfg = {
             "n_epochs": 10,
             "log_nth": 0,
+            "optimizer_name": "Adam",
             "optimizer": {
                 "lr": 1e-3,
                 "weight_decay": 1e-3
@@ -92,12 +93,12 @@ class Solver(object):
             self.epoch = checkpoint['epoch']
         else:
             self.model = model
-            self.optimizer = (optim.Adam(
-                    model.parameters(),
-                    **self.train_cfg["optimizer"],
-                ) 
-                if optimizer is None 
-                else optimizer)
+            # self.optimizer = (optim.Adam(
+            #         model.parameters(),
+            #         **self.train_cfg["optimizer"],
+            #     ) 
+            #     if optimizer is None 
+            #     else optimizer)
 
         self.loss_fn = jensen_shannon_mi if loss_fn is None else loss_fn
 
@@ -122,7 +123,7 @@ class Solver(object):
 
         self.epoch = 0
 
-    def train(self, train_config: dict = None, track = None):
+    def train(self, train_config: dict = None, track = None, optimizer = None):
         """ Training method from the solver.
 
             Paramters:
@@ -133,6 +134,13 @@ class Solver(object):
         if train_config is not None:
             # Merges custom config with default config!
             self.train_cfg = {**self.train_cfg, **train_config}
+        
+        self.optimizer = (getattr(optim,  self.train_cfg["optimizer_name"])(
+                            self.model.parameters(),
+                            **self.train_cfg["optimizer"],
+                            ) 
+                         if optimizer is None 
+                         else optimizer)
 
         
         # decayRate = 0.95
@@ -168,36 +176,39 @@ class Solver(object):
                 self.optimizer.zero_grad() # https://stackoverflow.com/questions/48001598/why-do-we-need-to-call-zero-grad-in-pytorch
 
                 # For each action/dynamic graph in the batch we get the gbl and lcl representation
-                # yhat = gbl, lcl
-                yhat = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
+                # self.yhat = gbl, lcl
+                self.yhat = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
                 
-                if isinstance(yhat, tuple):
-                    loss = self.loss_fn(*yhat)
+                if isinstance(self.yhat, tuple):
+                    loss = self.loss_fn(*self.yhat)
                 else:
                     if not isinstance(self.batch_y, torch.Tensor):
                         self.batch_y = torch.tensor(self.batch_x, dtype=torch.long).to(self.model.device)
                     else:
                         self.batch_y = self.batch_y.type("torch.LongTensor").to(self.model.device)
 
-                    loss = self.loss_fn(yhat, self.batch_y)
+                    loss = self.loss_fn(self.yhat, self.batch_y)
 
-                    #### EVALUATION DURING VALIDATION ####
-                    yhat_idx = torch.argsort(yhat, descending=True)
-                    self.train_pred = np.vstack([self.train_pred, yhat_idx.detach().cpu().numpy()]) if self.train_pred.size else yhat_idx.detach().cpu().numpy()
+                    #### EVALUATION DURING TRAINING ####
+                    self.yhat_idx = torch.argsort(self.yhat, descending=True)
+                    self.train_pred = np.vstack([self.train_pred, self.yhat_idx.detach().cpu().numpy()]) if self.train_pred.size else self.yhat_idx.detach().cpu().numpy()
                     self.train_label = np.append(self.train_label, self.batch_y.detach().cpu().numpy())
 
                 self.train_batch_losses.append(torch.squeeze(loss).item())
                 loss.backward()
-                clip_grad_norm_(self.model.parameters(), 1)
+                if "gradient_clipping" in train_config and (type(train_config["gradient_clipping"]) == int or float):
+                    clip_grad_norm_(self.model.parameters(), train_config["gradient_clipping"])
                 self.optimizer.step()
 
                 
                 # if callable(track):
                 #     track("training")
             
-            if not isinstance(yhat, tuple):
+            if not isinstance(self.yhat, tuple):
                 self.train_metric = self.evaluate(self.train_pred, self.train_label)
                 self.train_metrics.append(self.train_metric)
+                self.train_pred = np.array([])
+                self.train_label = np.array([])
 
             self.train_losses.append(np.mean(self.train_batch_losses) if len(self.train_batch_losses) > 0 else 0)
             self.train_batch_losses = []
@@ -229,37 +240,37 @@ class Solver(object):
                             
                         
                         # For each action/dynamic graph in the batch we get the gbl and lcl representation
-                        # yhat = gbl, lcl
-                        yhat = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
+                        # self.yhat = gbl, lcl
+                        self.yhat = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
                 
-                        if isinstance(yhat, tuple):
-                            loss = self.loss_fn(*yhat)
+                        if isinstance(self.yhat, tuple):
+                            loss = self.loss_fn(*self.yhat)
                         else:
                             if not isinstance(self.batch_y, torch.Tensor):
                                 self.batch_y = torch.tensor(self.batch_x, dtype=torch.float32).to(self.model.device)
                             else:
                                 self.batch_y = self.batch_y.type("torch.LongTensor").to(self.model.device)
 
-                            loss = self.loss_fn(yhat, self.batch_y)
+                            loss = self.loss_fn(self.yhat, self.batch_y)
                             
                             #### EVALUATION DURING VALIDATION ####
-                            yhat_idx = torch.argsort(yhat, descending=True)
-                            self.val_pred = np.vstack([self.val_pred, yhat_idx.detach().cpu().numpy()]) if self.val_pred.size else yhat_idx.detach().cpu().numpy()
+                            self.yhat_idx = torch.argsort(self.yhat, descending=True)
+                            self.val_pred = np.vstack([self.val_pred, self.yhat_idx.detach().cpu().numpy()]) if self.val_pred.size else self.yhat_idx.detach().cpu().numpy()
                             self.val_label = np.append(self.val_label, self.batch_y.detach().cpu().numpy())
 
                         self.val_batch_losses.append(torch.squeeze(loss).item())
 
-                    if not isinstance(yhat, tuple):
+                    if not isinstance(self.yhat, tuple):
                         self.val_metric = self.evaluate(self.val_pred, self.val_label)
                         self.val_metrics.append(self.val_metric)
+                        self.val_pred = np.array([])
+                        self.val_label = np.array([])
 
                         
                         # if callable(track):
                         #     track("validation")
 
-            # # lr_scheduler.step()
-
-            
+            # # lr_scheduler.step()            
                 self.val_losses.append(np.mean(self.val_batch_losses) if len(self.val_batch_losses) > 0 else 0)
                 self.val_batch_losses = []
 
@@ -295,29 +306,19 @@ class Solver(object):
                     self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32)
                         
                 # For each action/dynamic graph in the batch we get the gbl and lcl representation
-                # yhat = gbl, lcl
-                # yhat stochastic vector
-                yhat = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
+                # self.yhat = gbl, lcl
+                # self.yhat stochastic vector
+                self.yhat = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
                 
-                if isinstance(yhat, tuple):
-                    # loss = self.loss_fn(*yhat) 
+                if isinstance(self.yhat, tuple):
+                    # loss = self.loss_fn(*self.yhat) 
                     # TODO: Evaluation of TIG model?
                     pass
                 else:
-                    yhat_idx = torch.argsort(yhat, descending=True)
+                    self.yhat_idx = torch.argsort(self.yhat, descending=True)
                     
-                    self.predictions = np.vstack([self.predictions, yhat_idx.detach().cpu().numpy()]) if self.predictions.size else yhat_idx.detach().cpu().numpy()
+                    self.predictions = np.vstack([self.predictions, self.yhat_idx.detach().cpu().numpy()]) if self.predictions.size else self.yhat_idx.detach().cpu().numpy()
                     self.labels = np.append(self.labels, self.batch_y.detach().cpu().numpy())
-
-                    # self.predictions.append(yhat_idx.numpy())
-                    # self.labels.append(self.batch_y)
-
-                    # pred_labels = torch.stack([yhat, self.batch_y], 1)
-
-                    # if self.results is None:
-                    #     self.results = pred_labels
-                    # else:
-                    #     self.results = torch.cat((self.results, pred_labels))    
 
             self.metric = self.evaluate(self.predictions, self.labels)
 

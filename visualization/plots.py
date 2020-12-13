@@ -1,6 +1,6 @@
 """
 """
-
+import pprint
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -13,26 +13,32 @@ from matplotlib.ticker import FormatStrFormatter
 
 import scipy.ndimage as ndimage
 
+from matplotlib import rcParams
+rcParams.update({'figure.autolayout': True})
+
 plt.style.use('seaborn')
 
-def plot_emb(x, y, dim=2, title="", use_pca = True, ax = None):
+def plot_emb(x, y, dim=2, title="", use_pca = True, ax = None, count=False):
     """
     """
-    if use_pca:
-        pca = PCA(n_components=dim, random_state=123)
+    if isinstance(x, torch.Tensor):
+        x = x.detach().cpu().numpy()
+
+    if x.shape[1] > 2:
+        pca = PCA(n_components=2, random_state=123)
         x = pca.fit_transform(x)
     
+    fig = None
     if ax is None:
         fig, ax = plt.subplots(1,2, figsize=(12, 5))
 
-    print(ax)
+    ax[0].scatter(x[:,0], x[:,1], c=y.astype(int), cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
+    if count:
+        sns.countplot(x=y, ax=ax[1])
 
-    sns.scatterplot(x[:,0], x[:,1], hue=y.astype(str), ax=ax[0],  legend=False)
-    sns.countplot(x=y, ax=ax[1])
-
-    # if ax is None:
-    #     fig.suptitle(title)
-    #     return fig
+    if fig is not None:
+        fig.suptitle(title)
+        return fig
 
 def class_contour(x, y, clf, precision = 0.02, title="", ax = None):
     """
@@ -76,11 +82,6 @@ def class_contour(x, y, clf, precision = 0.02, title="", ax = None):
     # levels = MaxNLocator(nbins=15).tick_values(Z.min(), Z.max())
 
     ax.contourf(xx, yy, Z, alpha=0.8, cmap=sns.color_palette("Spectral", as_cmap=True))
-
-    # Z2 = Z[:, 1] * -1 # contour only for class 1
-    # Z2 = Z2.reshape(xx.shape)
-    # ax.contourf(xx, yy, Z2, alpha=0.8, cmap="viridis")
-
 
     ax.scatter(x[:, 0], x[:, 1], c=y.astype(int), cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
 
@@ -150,62 +151,93 @@ def eval_plots(folder, title="", precision = 0.02):
     ax.set_title("MLP Accuracy")
     ax.legend()
 
-def plot_desc_loss_acc(x, y, clf, loss, metric, prec = 0.02, title="", n_epochs=None):
+def plot_desc_loss_acc(x, y, clf, loss, metric, prec = 0.02, title="", n_epochs=None,
+                       config = None, model_name = "TIG"):
     """
     """
-    fig = plt.figure(figsize=(9, 4), constrained_layout=True)
-    gs = fig.add_gridspec(2, 2)
+    figsize=(9*1.2, 3*1.2)
+    grid = (2, 3)
+
+    config= None  # TODO: Remove config print to the plot. Matplot is not able to handle text appropriately
+    
+    
+    if config is not None:
+        figsize=(9, 6)
+        grid = (3, 2)
+
+    fig = plt.figure(figsize=figsize)
+    gs = fig.add_gridspec(grid[0], grid[1])
 
     fig.suptitle(title, fontsize=12)
 
     #### Plot Contour ####
-    ax = fig.add_subplot(gs[0:, 0])
-    class_contour(x, y, clf, prec, ax = ax)
-    ax.set_title("MLP Decision Boundaries")
-
+    if not clf is None:
+        ax = fig.add_subplot(gs[0:2, 0])
+        class_contour(x, y, clf, prec, ax = ax)
+        ax.set_title(f"{model_name} Decision Boundaries")
+    else:
+        ax = fig.add_subplot(gs[0:2, 0])
+        plot_emb(x, y, ax = [ax])
+        ax.set_title("Embeddings")
+    # ax.set_aspect(1)
 
     #### Loss Curve ####
-    if isinstance(loss, list):
-        loss = np.array(loss)
+    ax = fig.add_subplot(gs[0, 1:])
 
-    ax = fig.add_subplot(gs[0, 1])
-    ax.axhline(loss.min(), 0,
-               loss.shape[0], lw=1, ls=":", c="grey")
+    for i, name in enumerate(loss):
+        l = loss[name]
+        if isinstance(l, list):
+            l = np.array(l)
 
-    ax.plot(loss)
-    
-    if n_epochs is not None:
-        ax.set_xlim(0, n_epochs)
+        ax.axhline(l.min(), 0,
+                   l.shape[0], lw=1, ls=":", c="grey")
+        ax.plot(l, label=name)
+        
+        if n_epochs is not None:
+            ax.set_xlim(0, n_epochs)
 
-    ax.text(x=ax.get_xlim()[1] + 0.5, y=loss.min(), s='%.3f' % loss.min(),  va="center")
+        offset = 8 if i == 0 else -8
+        ax.annotate('%.3f (%s)' % (l.min(), name), xy=(ax.get_xlim()[1] + 0.5, l.min()),  va="center",
+                xytext=(0, offset), textcoords='offset points')
+        ax.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
 
-    # ax.set_yticks(list(ax.get_yticks()) + [loss.min()])
-    ax.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
-
-    ax.set_title("MLP Loss")
-    # ax.legend()
+    ax.set_title(f"{model_name} Loss")
+    ax.legend()
 
     #### Accuracy Curve ####
-    if isinstance(metric, list):
-        metric = np.array(metric)
+    if metric is not None:
+        ax = fig.add_subplot(gs[1, 1:])
 
-    ax = fig.add_subplot(gs[1, 1])
+        for i, name in enumerate(metric):
+            m = metric[name]
+            if isinstance(m, list):
+                m = np.array(m)        
 
-    ax.axhline(metric.max(), 0,
-               metric.shape[0], lw=1, ls=":", c="grey")
+            ax.axhline(m.max(), 0,
+                       m.shape[0], lw=1, ls=":", c="grey")
+            
+            ax.plot(m, label=name)
+            
+            if n_epochs is not None:
+                ax.set_xlim(0, n_epochs)
+            
+            offset = 8 if i == 0 else -8
+            ax.annotate('%.3f (%s)' % (m.max(), name), xy=(ax.get_xlim()[1] + 0.5, m.max()), va="center",
+                        xytext=(0, offset), textcoords='offset points')
+            ax.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
 
-    
-    ax.plot(metric)
-    
-    if n_epochs is not None:
-        ax.set_xlim(0, n_epochs)
-    
-    ax.text(x=ax.get_xlim()[1] + 0.5, y=metric.max(), s='%.3f' % metric.max(), va="center")
+        ax.set_title(f"{model_name} Metric")
+        ax.legend()
 
-    # ax.set_yticks(list(ax.get_yticks()) + [metric.max()])
-    ax.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+    #### Config ####
+    # if config is not None:
+    #     from textwrap import wrap
+    #     ax = fig.add_subplot(gs[:, 1])
+    #     ax.invert_yaxis()
+    #     ax.axis('off')
+    #     ax.set_title("Experiment Config")
+    #     ax.text(0, 0, pprint.pformat(config, indent=4, width=80), va="top", fontsize=10, wrap=True)#.set_in_layout(False)
 
-    ax.set_title("MLP Metric (Accuracy)")
-    # ax.legend()
+    fig.tight_layout()
 
     return fig

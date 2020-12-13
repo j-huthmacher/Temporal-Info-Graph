@@ -3,7 +3,6 @@
     @author: jhuthmacher
 """
 import requests
-# import patoolib
 from zipfile import ZipFile
 from pathlib import Path
 import sys
@@ -19,7 +18,6 @@ from torch.utils.data import Dataset, TensorDataset
 import networkx as nx 
 
 from config.config import log
-
 
 ##########################
 # Custom DataSet Objects #
@@ -60,14 +58,14 @@ class TIGDataset(Dataset):
                 url = f'http://85.215.86.232/tig/data/{self.name}.zip'
                 r = requests.get(url, allow_redirects=True, stream=True)
 
-                pbar = tqdm(unit="B", total=int(r.headers['Content-Length']), desc=f'Download {self.name} ')
+                pbar = tqdm(unit="B", total=int(r.headers['Content-Length'])//10**6, desc=f'Download {self.name} ')
                 chunkSize = 1024
 
                 Path(self.path).mkdir(parents=True, exist_ok=True)            
                 with open(self.path + self.name + ".zip", 'wb') as f:
                     for chunk in r.iter_content(chunk_size=chunkSize): 
                         if chunk: # filter out keep-alive new chunks
-                            pbar.update (len(chunk))
+                            pbar.update (len(chunk)//10**6)
                             f.write(chunk)            
                 log.info(f"Data set donwloaded! ({self.path + self.name + '.zip'})")
             else:
@@ -77,7 +75,7 @@ class TIGDataset(Dataset):
                 #### Extract ####
                 with ZipFile(file=self.path + self.name + '.zip') as zip_file:
                     # Loop over each file
-                    for member in tqdm(iterable=zip_file.namelist(), total=len(zip_file.namelist())):
+                    for member in tqdm(iterable=zip_file.namelist(), total=len(zip_file.namelist()), desc=f'Extract {self.name} '):
                         zip_file.extract(member, path=self.path)
             else:
                 log.info(f"Data exist extracted! ({self.path + self.name + '.npz'})")
@@ -127,9 +125,9 @@ class TIGDataset(Dataset):
         if mode > 2:
             sets.append(list(zip(self.x[train_threshold:val_threshold], self.y[train_threshold:val_threshold])))
 
-        return sets
+        return sets[0] if mode <= 1 else sets
 
-    def stratify(self, num: int, mode: str = "top-class", lim=None):
+    def stratify(self, num: int, train_ratio=0.8, val_ratio=0.1, mode=2, lim=None):
         """
         """
         unique, counts = np.unique(self.y, return_counts=True)
@@ -139,10 +137,23 @@ class TIGDataset(Dataset):
         classes = sor[:num, 0] # Top n classes
         class_idx = np.where(np.isin(self.y, classes))
 
+        train_threshold = int(self.y[class_idx].shape[0] * train_ratio)
+        val_threshold = int(self.y[class_idx].shape[0] * (train_ratio + val_ratio))
+
         if lim is not None:
-            return list(zip(self.x[class_idx][:lim], self.y[class_idx][:lim]))
-        else:
-            return list(zip(self.x[class_idx], self.y[class_idx]))
+            train_threshold = int((lim) * train_ratio)
+            val_threshold = int((lim) * (train_ratio + val_ratio))
+
+        sets = []
+        sets.append(list(zip(self.x[class_idx][:train_threshold], self.y[class_idx][:train_threshold])))
+
+        if mode > 1:
+            sets.append(list(zip(self.x[class_idx][train_threshold:val_threshold], self.y[class_idx][train_threshold:val_threshold])))
+
+        if mode > 2:
+            sets.append(list(zip(self.x[class_idx][train_threshold:val_threshold], self.y[class_idx][train_threshold:val_threshold])))
+
+        return sets[0] if mode <= 1 else sets
     
     def __len__(self):
         return len(self.y)

@@ -3,7 +3,8 @@
     @author: jhuthmacher
 """
 import requests
-import patoolib
+# import patoolib
+from zipfile import ZipFile
 from pathlib import Path
 import sys
 import os
@@ -56,27 +57,28 @@ class TIGDataset(Dataset):
         if not exists(self.path +  self.file_name):
             if not exists(self.path + self.name + ".rar"):
                 #### Download #### 
-                url = f'http://85.215.86.232/tig/data/{self.name}.rar'
+                url = f'http://85.215.86.232/tig/data/{self.name}.zip'
                 r = requests.get(url, allow_redirects=True, stream=True)
 
                 pbar = tqdm(unit="B", total=int(r.headers['Content-Length']), desc=f'Download {self.name} ')
                 chunkSize = 1024
 
                 Path(self.path).mkdir(parents=True, exist_ok=True)            
-                with open(self.path + self.name + ".rar", 'wb') as f:
+                with open(self.path + self.name + ".zip", 'wb') as f:
                     for chunk in r.iter_content(chunk_size=chunkSize): 
                         if chunk: # filter out keep-alive new chunks
                             pbar.update (len(chunk))
                             f.write(chunk)            
-                log.info(f"Data set donwloaded! ({self.path + self.name + '.rar'})")
+                log.info(f"Data set donwloaded! ({self.path + self.name + '.zip'})")
             else:
-                log.info(f"Data exist already! ({self.path + self.name + '.rar'})")
+                log.info(f"Data exist already! ({self.path + self.name + '.zip'})")
 
             if not exists(self.path + self.name + '.npz'):
                 #### Extract ####
-                log.info(f"Start extraction! ({self.path + self.name + '.rar'})")
-                patoolib.extract_archive(self.path + self.name + ".rar", outdir=self.path, verbosity=-1)
-                log.info(f"Data set extracted! ({self.path + self.name + '.npz'})")
+                with ZipFile(file=self.path + self.name + '.zip') as zip_file:
+                    # Loop over each file
+                    for member in tqdm(iterable=zip_file.namelist(), total=len(zip_file.namelist())):
+                        zip_file.extract(member, path=self.path)
             else:
                 log.info(f"Data exist extracted! ({self.path + self.name + '.npz'})")
 

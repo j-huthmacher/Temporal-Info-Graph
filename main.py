@@ -11,7 +11,7 @@ from model.temporal_info_graph import TemporalInfoGraph
 from model.mlp import MLP
 from model.tracker import Tracker
 from model.solver import Solver
-from experiments import exp_overfit, exp_test,exp_test_trained_enc, exp_tig_overfit, exp_colab, experiment
+from experiments import  experiment
 
 
 from data import KINECT_ADJACENCY
@@ -28,7 +28,7 @@ parser = argparse.ArgumentParser(prog='tig', description='Temporal Info Graph')
 parser.add_argument('--config', dest='config',
                     help='Defines which configuration should be usd. Can be a name, .json or .yml file.')
 
-parser.add_argument('--name', dest='name',
+parser.add_argument('--name', dest='name', default="TIG_Experiment",
                     help='Name of the experiment.')
 
 parser.add_argument('--tracking', dest='tracking', default="remote",
@@ -59,7 +59,7 @@ if args.train:
     db_url = open(".mongoURL", "r").readline()
     torch.cuda.empty_cache()
 
-    name = "TIG_Experiment"
+    name = args.name
     config = {}
 
     if args.config is not None:
@@ -70,7 +70,7 @@ if args.train:
         elif ".json" in args.config:
             with open(args.config) as file:
                 name = args.name
-                config = json.load(file, Loader=yaml.FullLoader)
+                config = json.load(file)
         else:
             with open("./experiments/config_repo.yml") as file:
                 name += f"_{args.config}"
@@ -80,10 +80,10 @@ if args.train:
             name += "_standard"
             config = yaml.load(file, Loader=yaml.FullLoader)["standard"]
 
-    tracking = {}
+    tracking = {"ex_name": name}
     if args.tracking == "remote":
         tracking = {
-            "ex_name": name, 
+            "ex_name": name,
             "db_url": db_url,
             "interactive": True
         }

@@ -210,11 +210,10 @@ class Solver(object):
                 self.train_pred = np.array([])
                 self.train_label = np.array([])
 
-            self.train_losses.append(np.mean(self.train_batch_losses) if len(self.train_batch_losses) > 0 else 0)
-            self.train_batch_losses = []
+            
 
-            if callable(track):
-                track("epoch")
+            # if callable(track):
+            #     track("epoch")
 
             self.phase = "validation"
             if self.val_loader is not None:
@@ -226,6 +225,8 @@ class Solver(object):
                     # Validate #
                     ############
                     self.model.eval()
+                    del self.batch_x
+                    del self.batch_y
                     for self.batch, (self.batch_x, self.batch_y) in enumerate(tqdm(self.val_loader, disable=False, leave=False,
                                                                               desc=f'Vali. Batch (Epoch: {self.epoch})')):
                         # The train loader returns dim (batch_size, frames, nodes, features)
@@ -273,9 +274,12 @@ class Solver(object):
             # # lr_scheduler.step()            
                 self.val_losses.append(np.mean(self.val_batch_losses) if len(self.val_batch_losses) > 0 else 0)
                 self.val_batch_losses = []
+            
+            self.train_losses.append(np.mean(self.train_batch_losses) if len(self.train_batch_losses) > 0 else 0)
+            self.train_batch_losses = []
 
-                if callable(track):
-                    track("epoch")
+            if callable(track):
+                track("epoch")
             
     def test(self, test_config: dict = None, model: nn.Module = None, test_loader = None,
              track = None):

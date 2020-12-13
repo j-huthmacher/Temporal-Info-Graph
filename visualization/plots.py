@@ -155,8 +155,10 @@ def plot_desc_loss_acc(x, y, clf, loss, metric, prec = 0.02, title="", n_epochs=
                        config = None, model_name = "TIG"):
     """
     """
-    figsize=(9*1.2, 3*1.2)
-    grid = (2, 3)
+    width_ratio = 1.5
+    height=5
+    figsize=(height + (height * width_ratio), height)
+    grid = (2, 2)
 
     config= None  # TODO: Remove config print to the plot. Matplot is not able to handle text appropriately
     
@@ -166,7 +168,7 @@ def plot_desc_loss_acc(x, y, clf, loss, metric, prec = 0.02, title="", n_epochs=
         grid = (3, 2)
 
     fig = plt.figure(figsize=figsize)
-    gs = fig.add_gridspec(grid[0], grid[1])
+    gs = fig.add_gridspec(grid[0], grid[1], width_ratios =[1, width_ratio])
 
     fig.suptitle(title, fontsize=12)
 
@@ -196,13 +198,15 @@ def plot_desc_loss_acc(x, y, clf, loss, metric, prec = 0.02, title="", n_epochs=
         if n_epochs is not None:
             ax.set_xlim(0, n_epochs)
 
-        offset = 8 if i == 0 else -8
-        ax.annotate('%.3f (%s)' % (l.min(), name), xy=(ax.get_xlim()[1] + 0.5, l.min()),  va="center",
-                xytext=(0, offset), textcoords='offset points')
+        offset = -0.5 if i%2 == 0 else 0.5
+        # ax.annotate('%.3f (%s)' % (l.min(), name), xy=(ax.get_xlim()[1] + 0.5, l.min()),  va="center",
+        #             xytext=(0, offset), textcoords='offset points', xycoords='data')
+        ax.text(x=ax.get_xlim()[1] + 0.5, y= l.min(), s='%.3f (%s)' % (l.min(), name), va="center")
         ax.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
 
     ax.set_title(f"{model_name} Loss")
-    ax.legend()
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2),
+              fancybox=True, shadow=True, ncol=5)
 
     #### Accuracy Curve ####
     if metric is not None:
@@ -221,13 +225,15 @@ def plot_desc_loss_acc(x, y, clf, loss, metric, prec = 0.02, title="", n_epochs=
             if n_epochs is not None:
                 ax.set_xlim(0, n_epochs)
             
-            offset = 8 if i == 0 else -8
-            ax.annotate('%.3f (%s)' % (m.max(), name), xy=(ax.get_xlim()[1] + 0.5, m.max()), va="center",
-                        xytext=(0, offset), textcoords='offset points')
+            offset = -0.5 if i%2 == 0 else 0.5
+            offset = 0
+            ax.text(x=ax.get_xlim()[1] + 0.5, y= m.max() + offset, s='%.3f (%s)' % (m.max(), name), va="center")
+
             ax.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
 
         ax.set_title(f"{model_name} Metric")
-        ax.legend()
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2),
+                  fancybox=True, shadow=True, ncol=5)
 
     #### Config ####
     # if config is not None:

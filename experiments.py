@@ -108,14 +108,26 @@ def experiment(tracker, config):
         num_classes = config["classifier"]["num_classes"] if "num_classes" in config["classifier"] else int(np.max(data.y) + 1) 
         classifier = MLP(num_class=num_classes, encoder=None, **config["classifier"]).cuda()
 
-        emb_x = np.array(train, dtype=object)[:, 0]
-        y = np.array(train, dtype=object)[:, 1]
+        emb_x = np.array(train + val, dtype=object)[:, 0]
+        y = np.array(train + val, dtype=object)[:, 1]
 
         emb_x = solver.model(np.transpose(np.array(list(emb_x)),(0,3,2,1)),
                              KINECT_ADJACENCY)[0].detach().cpu().numpy()
+        
+        train, val = data.split_data(emb_x, y)
 
-        train_loader = DataLoader(list(zip(emb_x, y)), **config["loader"])
-        loader = [train_loader, train_loader]
+        if "val_loader" in config["loader"]:
+            train_loader = DataLoader(train, **config["loader"]["train_loader"])
+            val_loader = DataLoader(val, **config["loader"]["val_loader"])
+        else:
+            # In this case we use the same data loader config for train and validation.
+            train_loader = DataLoader(train, **config["loader"])
+            val_loader = DataLoader(val, **config["loader"])
+
+        if config["same_loader"]:
+            loader = [train_loader, train_loader]
+        else:
+            loader = [train_loader, val_loader]
 
         solver = Solver(classifier, loader, loss_fn = nn.CrossEntropyLoss())
 

@@ -83,6 +83,32 @@ class TIGDataset(Dataset):
         data = np.load(self.path +  self.file_name, allow_pickle=True)
         self.x = data["x"]
         self.y = data["y"]
+    
+    def split_data(self, x, y, train_ratio=0.8, val_ratio=0.1, mode=2, lim=None):
+        """
+        """
+        train_threshold = int(y.shape[0] * train_ratio)
+        val_threshold = int(y.shape[0] * (train_ratio + val_ratio))
+
+        if lim is not None:
+            train_threshold = int((lim) * train_ratio)
+            val_threshold = int((lim) * (train_ratio + val_ratio))
+        else:
+            lim = y.shape[0]
+
+        sets = []
+        sets.append(list(zip(x[:train_threshold], y[:train_threshold])))
+
+        if mode > 1:
+            if mode <= 2:
+                sets.append(list(zip(x[train_threshold:lim], y[train_threshold:lim])))
+            else:
+                sets.append(list(zip(x[train_threshold:val_threshold], y[train_threshold:val_threshold])))
+
+        if mode > 2:
+            sets.append(list(zip(x[train_threshold:val_threshold], y[train_threshold:val_threshold])))
+
+        return sets[0] if mode <= 1 else sets
 
     def split(self, train_ratio=0.8, val_ratio=0.1, mode=2, lim=None):
         """ Spit data into train, validation and test set.
@@ -115,15 +141,20 @@ class TIGDataset(Dataset):
         if lim is not None:
             train_threshold = int((lim) * train_ratio)
             val_threshold = int((lim) * (train_ratio + val_ratio))
+        else:
+            lim = self.y.shape[0]
 
         sets = []
         sets.append(list(zip(self.x[:train_threshold], self.y[:train_threshold])))
 
         if mode > 1:
-            sets.append(list(zip(self.x[train_threshold:val_threshold], self.y[train_threshold:val_threshold])))
-
+            if mode <= 2:
+                sets.append(list(zip(self.x[train_threshold:lim], self.y[train_threshold:lim])))
+            else:
+                sets.append(list(zip(self.x[train_threshold:val_threshold], self.y[train_threshold:val_threshold])))
+        
         if mode > 2:
-            sets.append(list(zip(self.x[train_threshold:val_threshold], self.y[train_threshold:val_threshold])))
+            sets.append(list(zip(self.x[val_threshold:lim], self.y[val_threshold:lim])))
 
         return sets[0] if mode <= 1 else sets
 
@@ -143,15 +174,22 @@ class TIGDataset(Dataset):
         if lim is not None:
             train_threshold = int((lim) * train_ratio)
             val_threshold = int((lim) * (train_ratio + val_ratio))
+        else:
+            lim = self.y.shape[0]
 
         sets = []
         sets.append(list(zip(self.x[class_idx][:train_threshold], self.y[class_idx][:train_threshold])))
 
-        if mode > 1:
-            sets.append(list(zip(self.x[class_idx][train_threshold:val_threshold], self.y[class_idx][train_threshold:val_threshold])))
+        if mode > 1 :
+            if mode <= 2:
+                sets.append(list(zip(self.x[class_idx][train_threshold:lim], 
+                                    self.y[class_idx][train_threshold:lim])))
+            else:
+                sets.append(list(zip(self.x[class_idx][train_threshold:val_threshold], 
+                                    self.y[class_idx][train_threshold:val_threshold])))
 
         if mode > 2:
-            sets.append(list(zip(self.x[class_idx][train_threshold:val_threshold], self.y[class_idx][train_threshold:val_threshold])))
+            sets.append(list(zip(self.x[class_idx][val_threshold:lim], self.y[class_idx][val_threshold:lim])))
 
         return sets[0] if mode <= 1 else sets
     

@@ -6,6 +6,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import torch.optim as optim
+import json
+
 
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -53,8 +55,7 @@ def experiment(tracker, config):
         if not config["stratify"] or config["stratify"] == {} :
             train, val = data.split(**config["data_split"]) # Default: 80% train, 10% val
         else:
-            train = data.stratify(**config["stratify"])
-            val = train # TODO: Implement stratify also for validation
+            train, val = data.stratify(**config["stratify"])
 
         if "val_loader" in config["loader"]:
             train_loader = DataLoader(train, **config["loader"]["train_loader"])
@@ -98,7 +99,7 @@ def experiment(tracker, config):
             #### Local Embedding Tracking ####
             np.savez(tracker.local_path+"embeddings", x = emb_x, y= emb_y)
 
-        if not "classifier" in config and not isinstance(config["classifier"], dict):
+        if not "classifier" in config or not isinstance(config["classifier"], dict):
             return
 
         #### DOWNSTREAM ####
@@ -126,15 +127,68 @@ def experiment(tracker, config):
     return run
 
 
+class Experiment():
+    def __init__(self, path, load="all"):
+        """
+        """
+        self.path = path
+        try:
+            data = np.load(f"{path}embeddings.npz")
+            emb_x = data["x"]
+            emb_y = data["y"]
+
+            self.emb_loader = DataLoader(list(zip(emb_x, emb_y)))
+
+            #### Clean Storage ####
+            del data
+            del emb_x
+            del emb_y
+        except:
+            # Not each experiement has embeddings saved
+            pass
+
+        try:
+            self.classifier = torch.load(f"{path}TIG_MLP.pt").cuda()
+            self.clf_train_loss = np.load(f"{path}TIG_MLP.train_losses.npy")
+            self.clf_val_loss = np.load(f"{path}TIG_MLP.val_losses.npy")
+            self.clf_train_metrics = np.load(f"{path}TIG_MLP.train.metrics.npy")
+            self.clf_val_metrics = np.load(f"{path}TIG_MLP.train.metrics.npy")
+        except:
+            # Not each experiement has  a classifier
+            pass
+        
+        try:
+            self.tig = torch.load(f"{path}TIG_.pt").cuda()
+            self.tig_train_loss = np.load(f"{path}TIG_.train_losses.npy")
+            self.tig_val_loss = np.load(f"{path}TIG_.val_losses.npy")
+            self.tig_train_metrics = np.load(f"{path}TIG_.train.metrics.npy")
+            self.tig_val_metrics = np.load(f"{path}TIG_.train.metrics.npy")
+        except:
+            pass
+        
+        with open(f"{path}config.json") as file:
+            self.config = json.load(file)
+            self.config["exp_path"] = self.path
+
+    @property
+    def emb(self):
+        try:
+            return self.emb_loader.dataset
+        except:
+            return None
+    @property
+    def emb_x(self):
+        return np.array(list(np.array(self.emb)[:, 0]))
+
+    @property
+    def emb_y(self):
+        return np.array(list(np.array(self.emb)[:, 1]))
 
 
 
-
-
-
-
-
-
+##############
+# Depricated #
+##############
 
 def exp_colab(tracker):
     def run(_run):

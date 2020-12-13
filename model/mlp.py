@@ -29,6 +29,7 @@ class MLP(nn.Module):
                 p.requires_grad = False
 
             self.encoder = encoder
+            self.encoder.eval()
 
         layers = [nn.Linear(in_dim, hidden_layers[0]), nn.Tanh()]
 
@@ -42,7 +43,7 @@ class MLP(nn.Module):
 
         self.layers = nn.Sequential(*layers)
 
-        self.layers.apply(self.init_weights)
+        # self.layers.apply(self.init_weights)
 
         #### TO DEVICE #####
         if self.encoder is not None: 
@@ -59,8 +60,8 @@ class MLP(nn.Module):
 
     def init_weights(self, m):
         if type(m) == nn.Linear:
-            torch.nn.init.xavier_uniform(m.weight)
-            m.bias.data.fill_(0.01)
+            torch.nn.init.xavier_uniform_(m.weight)
+            m.bias.data.fill_(0.001)
 
     def forward(self, x: torch.Tensor, A: torch.Tensor = None):
         """ Forward function
@@ -73,9 +74,11 @@ class MLP(nn.Module):
         """
         x = x.type('torch.FloatTensor').to(self.device)
 
+        
         if self.encoder is not None and A is not None:
-            x, _ = self.encoder(x, A)
-
+            with torch.no_grad():
+                x = self.encoder(x, A)[0].detach()
+  
         x = self.layers(x)
 
         return x

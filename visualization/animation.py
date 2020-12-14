@@ -22,24 +22,30 @@ plt.rcParams["animation.html"] = "jshtml"
 plt.rcParams['figure.dpi'] = 100  
 plt.style.use('seaborn')
 
-images = []
+images = {
+
+}
 
 def create_gif(fig, path, fill=True):
     """
     """
     buf = io.BytesIO()
-    fig.savefig(buf, format='png')
+    fig.savefig(buf, format='png', bbox_inches="tight")
     buf.seek(0)
 
     im = Image.open(buf)
 
-    images.append(im)
+    if not path in images:
+        images[path] = [im]
+    else:
+        images[path].append(im)
 
-    if not fill:
-        im.save(fp=path, format='GIF', append_images=images,
+    
+    im.save(fp=path, format='GIF', append_images=images[path],
                 save_all=True, duration=200, loop=0)
-        fig.savefig(path.replace(".gif", ".final.png"), dpi=150)                
-        images.clear()
+    fig.savefig(path.replace(".gif", ".final.png"), dpi=150)             
+    if not fill:   
+        images[path].clear()
 
     
 

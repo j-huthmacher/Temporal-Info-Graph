@@ -130,57 +130,80 @@ class Tracker(object):
     def track_epoch(self):
         """ Function that manage the tracking per epoch (called from the solver).
         """
-        
-        if isinstance(self.solver.model, MLP) and self.track_decision:
-            emb_x = np.array(self.solver.train_loader.dataset, dtype=object)[:, 0]
-            emb_y = np.array(self.solver.train_loader.dataset, dtype=object)[:, 1]
+        try:
+            if isinstance(self.solver.model, MLP) and self.track_decision:
+                emb_x = np.array(self.solver.train_loader.dataset, dtype=object)[:, 0]
+                emb_y = np.array(self.solver.train_loader.dataset, dtype=object)[:, 1]
 
-            loss = {
-                "MLP Train Loss": self.solver.train_losses,
-                "MLP Val Loss": self.solver.train_losses,
-            }
+                loss = {
+                    "MLP Train Loss": self.solver.train_losses,
+                    "MLP Val Loss": self.solver.train_losses,
+                }
 
-            metric = {
-                "MLP Top-1 Acc.": np.array(self.solver.train_metrics)[:, 0],
-                "MLP Top-5 Acc.": np.array(self.solver.train_metrics)[:, 1],
-                "MLP Val Top-1 Acc.": np.array(self.solver.val_metrics)[:, 0],
-                "MLP Val Top-5 Acc.": np.array(self.solver.val_metrics)[:, 1],
-            }
+                metric = {
+                    "MLP Top-1 Acc.": np.array(self.solver.train_metrics)[:, 0],
+                    "MLP Top-5 Acc.": np.array(self.solver.train_metrics)[:, 1],
+                    "MLP Val Top-1 Acc.": np.array(self.solver.val_metrics)[:, 0],
+                    "MLP Val Top-5 Acc.": np.array(self.solver.val_metrics)[:, 1],
+                }
 
-            fig = plot_desc_loss_acc(emb_x,
-                                     emb_y,
-                                     self.solver.model,
-                                     loss = loss,
-                                     metric=metric,
-                                     n_epochs = self.solver.train_cfg["n_epochs"],
-                                     title=f"MLP Decision Boundary - Epoch: {self.solver.epoch}",
-                                     model_name="MLP")
-            plt.close()
-            create_gif(fig, path=self.local_path+"MLP.decision.boundaries.gif",
-                       fill=(self.solver.train_cfg["n_epochs"] - 1 != self.solver.epoch))
+                
+                fig = plot_desc_loss_acc(emb_x,
+                                        emb_y,
+                                        self.solver.model,
+                                        loss = loss,
+                                        metric=metric,
+                                        n_epochs = self.solver.train_cfg["n_epochs"],
+                                        title=f"MLP Decision Boundary - Epoch: {self.solver.epoch}",
+                                        model_name="MLP")
+                plt.close()
+                create_gif(fig, path=self.local_path+"MLP.decision.boundaries.gif",
+                        fill=(self.solver.train_cfg["n_epochs"] - 1 != self.solver.epoch))
 
-        if isinstance(self.solver.model, TemporalInfoGraph) and self.track_decision:
-            with torch.no_grad():
-                emb_x = np.array(list(np.array(self.solver.train_loader.dataset, dtype=object)[:, 0]))
-                emb_x = self.model(emb_x.transpose((0,3,2,1)), KINECT_ADJACENCY)[0]
-            emb_y = np.array(self.solver.train_loader.dataset, dtype=object)[:, 1]
+            if isinstance(self.solver.model, TemporalInfoGraph) and self.track_decision:
+                with torch.no_grad():
+                    emb_x = np.array(list(np.array(self.solver.train_loader.dataset, dtype=object)[:, 0]))
+                    emb_x = self.model(emb_x.transpose((0,3,2,1)), KINECT_ADJACENCY)[0]
+                emb_y = np.array(self.solver.train_loader.dataset, dtype=object)[:, 1]
 
-            loss = {
-                "TIG Train Loss (JSD MI)": self.solver.train_losses,
-                "TIG Val Loss (JSD MI)": self.solver.train_losses,
-            }
+                loss = {
+                    "TIG Train Loss (JSD MI)": self.solver.train_losses,
+                    "TIG Val Loss (JSD MI)": self.solver.train_losses,
+                }
 
-            fig = plot_desc_loss_acc(emb_x,
-                                     emb_y,
-                                     None,
-                                     loss,
-                                     None,
-                                     n_epochs = self.solver.train_cfg["n_epochs"],
-                                     title=f"TIG Embeddings - Epoch: {self.solver.epoch}",
-                                     model_name="TIG")
-            plt.close()
-            create_gif(fig, path=self.local_path+"TIG.embeddings.gif",
-                       fill=(self.solver.train_cfg["n_epochs"] - 1 != self.solver.epoch))
+                fig = plot_desc_loss_acc(emb_x,
+                                        emb_y,
+                                        None,
+                                        loss,
+                                        None,
+                                        n_epochs = self.solver.train_cfg["n_epochs"],
+                                        title=f"TIG Embeddings (PCA) - Epoch: {self.solver.epoch}",
+                                        model_name="TIG",
+                                        mode="PCA")
+                if self.solver.epoch == 0:
+                    fig.savefig(self.local_path+"TIG.embeddings.pca.initial.png")
+
+                plt.close()
+                create_gif(fig, path=self.local_path+"TIG.embeddings.pca.gif",
+                        fill=(self.solver.train_cfg["n_epochs"] - 1 != self.solver.epoch))
+                
+                fig = plot_desc_loss_acc(emb_x,
+                                        emb_y,
+                                        None,
+                                        loss,
+                                        None,
+                                        n_epochs = self.solver.train_cfg["n_epochs"],
+                                        title=f"TIG Embeddings (TSNE) - Epoch: {self.solver.epoch}",
+                                        model_name="TIG",
+                                        mode="TSNE")
+                if self.solver.epoch == 0:
+                    fig.savefig(self.local_path+"TIG.embeddings.tsne.initial.png")
+
+                plt.close()
+                create_gif(fig, path=self.local_path+"TIG.embeddings.tsne.gif",
+                        fill=(self.solver.train_cfg["n_epochs"] - 1 != self.solver.epoch))
+        except:
+            pass
 
         
         if self.ex is not None:        

@@ -5,6 +5,7 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 import torch
 from scipy.special import softmax
 
@@ -18,15 +19,19 @@ rcParams.update({'figure.autolayout': True})
 
 plt.style.use('seaborn')
 
-def plot_emb(x, y, dim=2, title="", use_pca = True, ax = None, count=False):
+def plot_emb(x, y, dim=2, title="", use_pca = True, ax = None, count=False, mode="PCA"):
     """
     """
     if isinstance(x, torch.Tensor):
         x = x.detach().cpu().numpy()
 
     if x.shape[1] > 2:
-        pca = PCA(n_components=2, random_state=123)
-        x = pca.fit_transform(x)
+        if mode == "PCA":
+            pca = PCA(n_components=2, random_state=123)
+            x = pca.fit_transform(x)
+        elif mode == "TSNE":
+            pca = TSNE(n_components=2, random_state=123)
+            x = pca.fit_transform(x)
     
     fig = None
     if ax is None:
@@ -152,7 +157,7 @@ def eval_plots(folder, title="", precision = 0.02):
     ax.legend()
 
 def plot_desc_loss_acc(x, y, clf, loss, metric, prec = 0.02, title="", n_epochs=None,
-                       config = None, model_name = "TIG"):
+                       config = None, model_name = "TIG", mode="PCA"):
     """
     """
     width_ratio = 1.5
@@ -179,7 +184,7 @@ def plot_desc_loss_acc(x, y, clf, loss, metric, prec = 0.02, title="", n_epochs=
         ax.set_title(f"{model_name} Decision Boundaries")
     else:
         ax = fig.add_subplot(gs[0:2, 0])
-        plot_emb(x, y, ax = [ax])
+        plot_emb(x, y, ax = [ax], mode=mode)
         ax.set_title("Embeddings")
     # ax.set_aspect(1)
 

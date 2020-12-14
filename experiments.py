@@ -34,8 +34,7 @@ default = {
         },
         "encoder_training": {
         },
-        "classifier": {
-        },
+        "classifier": False,
         "classifier_training": {
         },
     }

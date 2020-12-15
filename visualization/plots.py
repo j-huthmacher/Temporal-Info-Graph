@@ -57,36 +57,36 @@ def class_contour(x, y, clf, precision = 0.02, title="", ax = None):
         x = np.array(list(x))
     if len(y.shape) != 2:
         y = np.array(list(y))
-
-    if x.shape[1] > 2:
-        pca = PCA(n_components=2, random_state=123)
-        x = pca.fit_transform(x) 
-        raise ValueError("Too much dimensions! (Only 2D model is possible)")
-
-
-    h = precision  # step size in the mesh
-    x_min, x_max = x[:, 0].min() - max(h, 0.05), x[:, 0].max() + max(h, 0.05)
-    y_min, y_max = x[:, 1].min() - max(h, 0.05), x[:, 1].max() + max(h, 0.05)
-    xx, yy = np.meshgrid(np.arange(x_min, x_max, h),
-                         np.arange(y_min, y_max, h))
-
-        
-    Z = clf(torch.tensor(np.c_[xx.ravel(), yy.ravel()], dtype=torch.float32)).detach().cpu().numpy()
-   
+    
     fig = None
     if ax is None:
         fig, ax = plt.subplots(figsize=(5, 5))  
 
-    Z = np.argmax(Z, axis=1)
-    # Z1 = Z[:, 0] * -1 # contour only for class 0
-    Z = Z.reshape(xx.shape)
+    if x.shape[1] <= 2:
+        h = precision  # step size in the mesh
+        x_min, x_max = x[:, 0].min() - max(h, 0.05), x[:, 0].max() + max(h, 0.05)
+        y_min, y_max = x[:, 1].min() - max(h, 0.05), x[:, 1].max() + max(h, 0.05)
+        xx, yy = np.meshgrid(np.arange(x_min, x_max, h),
+                            np.arange(y_min, y_max, h))
+        device = clf.device
+        clf = clf.cpu()
+        Z = clf(torch.tensor(np.c_[xx.ravel(), yy.ravel()], dtype=torch.float32)).detach().cpu().numpy()
+        clf = clf.to(device)
+    
+        Z = np.argmax(Z, axis=1)
+        Z = Z.reshape(xx.shape)
 
-    Z = ndimage.gaussian_filter(Z, sigma=1.0, order=0)
+        Z = ndimage.gaussian_filter(Z, sigma=1.0, order=0)
 
-    # z = z[:-1, :-1]
-    # levels = MaxNLocator(nbins=15).tick_values(Z.min(), Z.max())
+        ax.contourf(xx, yy, Z, alpha=0.8, cmap=sns.color_palette("Spectral", as_cmap=True))
+    else:
+        yhat = clf(torch.tensor(x , dtype=torch.float32)).detach().cpu().numpy()
+        pca = PCA(n_components=2, random_state=123)
+        x = pca.fit_transform(x)
 
-    ax.contourf(xx, yy, Z, alpha=0.8, cmap=sns.color_palette("Spectral", as_cmap=True))
+        ax.scatter(x[:, 0], x[:, 1], cmap=sns.color_palette("Spectral", as_cmap=True),
+                   edgecolors=sns.color_palette("Spectral", as_cmap=True)(np.argmax(yhat, axis=1).astype(int)),
+                   facecolors='none', s=80,  linewidth=2)
 
     ax.scatter(x[:, 0], x[:, 1], c=y.astype(int), cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
 

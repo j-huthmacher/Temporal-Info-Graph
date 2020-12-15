@@ -106,31 +106,33 @@ def experiment(tracker, config):
         # Use the trained model!
         num_classes = config["classifier"]["num_classes"] if "num_classes" in config["classifier"] else int(np.max(data.y) + 1) 
         classifier = MLP(num_class=num_classes, encoder=None, **config["classifier"]).cuda()
+        encoder = solver.model
 
-        emb_x = np.array(train + val, dtype=object)[:, 0]
-        y = np.array(train + val, dtype=object)[:, 1]
+        # TODO: Input size probably too large!
+        # emb_x = np.array(train + val, dtype=object)[:, 0]
+        # y = np.array(train + val, dtype=object)[:, 1]
 
-        emb_x = solver.model(np.transpose(np.array(list(emb_x)),(0,3,2,1)),
-                             KINECT_ADJACENCY)[0].detach().cpu().numpy()
+        # emb_x = solver.model(np.transpose(np.array(list(emb_x)),(0,3,2,1)),
+        #                      KINECT_ADJACENCY)[0].detach().cpu().numpy()
         
-        train, val = data.split_data(emb_x, y)
+        # train, val = data.split_data(emb_x, y)
 
-        if "val_loader" in config["loader"]:
-            train_loader = DataLoader(train, **config["loader"]["train_loader"])
-            val_loader = DataLoader(val, **config["loader"]["val_loader"])
-        else:
-            # In this case we use the same data loader config for train and validation.
-            train_loader = DataLoader(train, **config["loader"])
-            val_loader = DataLoader(val, **config["loader"])
+        # if "val_loader" in config["loader"]:
+        #     train_loader = DataLoader(train, **config["loader"]["train_loader"])
+        #     val_loader = DataLoader(val, **config["loader"]["val_loader"])
+        # else:
+        #     # In this case we use the same data loader config for train and validation.
+        #     train_loader = DataLoader(train, **config["loader"])
+        #     val_loader = DataLoader(val, **config["loader"])
 
-        if config["same_loader"]:
-            loader = [train_loader, train_loader]
-        else:
-            loader = [train_loader, val_loader]
+        # if config["same_loader"]:
+        #     loader = [train_loader, train_loader]
+        # else:
+        #     loader = [train_loader, val_loader]
 
+        
         solver = Solver(classifier, loader, loss_fn = nn.CrossEntropyLoss())
-
-        tracker.track_traning(solver.train)(config["classifier_training"])
+        tracker.track_traning(solver.train)(config["classifier_training"], encoder=encoder)
         # tracker.track_testing(solver.test)({"verbose": True })
 
         log.info("Experiment done.")
@@ -170,10 +172,14 @@ class Experiment():
         
         try:
             self.tig = torch.load(f"{path}TIG_.pt").cuda()
-            self.tig_train_loss = np.load(f"{path}TIG_.train_losses.npy")
-            self.tig_val_loss = np.load(f"{path}TIG_.val_losses.npy")
-            self.tig_train_metrics = np.load(f"{path}TIG_.train.metrics.npy")
-            self.tig_val_metrics = np.load(f"{path}TIG_.train.metrics.npy")
+            self.tig_train_loss = np.load(f"{path}TIG_train_losses.npy")
+            self.tig_val_loss = np.load(f"{path}TIG_val_losses.npy")
+        except:
+            pass
+
+        try:
+            self.tig_train_metrics = np.load(f"{path}TIG_train.metrics.npy")
+            self.tig_val_metrics = np.load(f"{path}TIG_train.metrics.npy")
         except:
             pass
         

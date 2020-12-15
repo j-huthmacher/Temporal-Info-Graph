@@ -93,12 +93,6 @@ class Solver(object):
             self.epoch = checkpoint['epoch']
         else:
             self.model = model
-            # self.optimizer = (optim.Adam(
-            #         model.parameters(),
-            #         **self.train_cfg["optimizer"],
-            #     ) 
-            #     if optimizer is None 
-            #     else optimizer)
 
         self.loss_fn = jensen_shannon_mi if loss_fn is None else loss_fn
 
@@ -123,7 +117,7 @@ class Solver(object):
 
         self.epoch = 0
 
-    def train(self, train_config: dict = None, track = None, optimizer = None):
+    def train(self, train_config: dict = None, track = None, optimizer = None, encoder = None):
         """ Training method from the solver.
 
             Paramters:
@@ -134,6 +128,8 @@ class Solver(object):
         if train_config is not None:
             # Merges custom config with default config!
             self.train_cfg = {**self.train_cfg, **train_config}
+        
+        self.encoder = encoder 
         
         self.optimizer = (getattr(optim,  self.train_cfg["optimizer_name"])(
                             self.model.parameters(),
@@ -175,9 +171,11 @@ class Solver(object):
                 
                 self.optimizer.zero_grad() # https://stackoverflow.com/questions/48001598/why-do-we-need-to-call-zero-grad-in-pytorch
 
-                # For each action/dynamic graph in the batch we get the gbl and lcl representation
-                # self.yhat = gbl, lcl
-                self.yhat = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
+                if encoder is not None:
+                    self.yhat, _ = encoder.to(self.model.device)(self.batch_x, torch.tensor(KINECT_ADJACENCY))
+                    self.yhat = self.model(self.yhat)
+                else:
+                    self.yhat = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
                 
                 if isinstance(self.yhat, tuple):
                     loss = self.loss_fn(*self.yhat)
@@ -200,7 +198,6 @@ class Solver(object):
                     clip_grad_norm_(self.model.parameters(), train_config["gradient_clipping"])
                 self.optimizer.step()
 
-                
                 # if callable(track):
                 #     track("training")
             
@@ -209,11 +206,6 @@ class Solver(object):
                 self.train_metrics.append(self.train_metric)
                 self.train_pred = np.array([])
                 self.train_label = np.array([])
-
-            
-
-            # if callable(track):
-            #     track("epoch")
 
             self.phase = "validation"
             if self.val_loader is not None:
@@ -240,9 +232,11 @@ class Solver(object):
                                 self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32)
                             
                         
-                        # For each action/dynamic graph in the batch we get the gbl and lcl representation
-                        # self.yhat = gbl, lcl
-                        self.yhat = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
+                        if encoder is not None:
+                            self.yhat, _ = encoder(self.batch_x, torch.tensor(KINECT_ADJACENCY))
+                            self.yhat = self.model(self.yhat)
+                        else:
+                            self.yhat = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
                 
                         if isinstance(self.yhat, tuple):
                             loss = self.loss_fn(*self.yhat)
@@ -309,10 +303,11 @@ class Solver(object):
                     # For testing MLP on iris
                     self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32)
                         
-                # For each action/dynamic graph in the batch we get the gbl and lcl representation
-                # self.yhat = gbl, lcl
-                # self.yhat stochastic vector
-                self.yhat = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
+                if encoder is not None:
+                    self.yhat, _ = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
+                    self.yhat = self.model(self.yhat)
+                else:
+                    self.yhat = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
                 
                 if isinstance(self.yhat, tuple):
                     # loss = self.loss_fn(*self.yhat) 

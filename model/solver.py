@@ -181,7 +181,7 @@ class Solver(object):
                     loss = self.loss_fn(*self.yhat)
                 else:
                     if not isinstance(self.batch_y, torch.Tensor):
-                        self.batch_y = torch.tensor(self.batch_x, dtype=torch.long).to(self.model.device)
+                        self.batch_y = torch.tensor(self.batch_y, dtype=torch.long).to(self.model.device)
                     else:
                         self.batch_y = self.batch_y.type("torch.LongTensor").to(self.model.device)
 
@@ -239,10 +239,10 @@ class Solver(object):
                             self.yhat = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
                 
                         if isinstance(self.yhat, tuple):
-                            loss = self.loss_fn(*self.yhat)
+                            loss = self.loss_fn(*self.yhat, path="./")
                         else:
                             if not isinstance(self.batch_y, torch.Tensor):
-                                self.batch_y = torch.tensor(self.batch_x, dtype=torch.float32).to(self.model.device)
+                                self.batch_y = torch.tensor(self.batch_y, dtype=torch.float32).to(self.model.device)
                             else:
                                 self.batch_y = self.batch_y.type("torch.LongTensor").to(self.model.device)
 
@@ -340,6 +340,27 @@ class Solver(object):
 
         # accuracy 
         return top1, top5
+    
+    # def evaluate_embedding(embeddings, labels, search=True):
+    #     labels = preprocessing.LabelEncoder().fit_transform(labels)
+    #     x, y = np.array(embeddings), np.array(labels)
+    #     # print(x.shape, y.shape)
+
+    #     logreg_accuracies = [logistic_classify(x, y) for _ in range(1)]
+    #     # print(logreg_accuracies)
+    #     print('LogReg', np.mean(logreg_accuracies))
+
+    #     svc_accuracies = [svc_classify(x,y, search) for _ in range(1)]
+    #     # print(svc_accuracies)
+    #     print('svc', np.mean(svc_accuracies))
+
+    #     linearsvc_accuracies = [linearsvc_classify(x, y, search) for _ in range(1)]
+    #     # print(linearsvc_accuracies)
+    #     print('LinearSvc', np.mean(linearsvc_accuracies))
+
+    #     randomforest_accuracies = [randomforest_classify(x, y, search) for _ in range(1)]
+    #     # print(randomforest_accuracies)
+    #     print('randomforest', np.mean(randomforest_accuracies))
 
     def __repr__(self):
         """ String representation

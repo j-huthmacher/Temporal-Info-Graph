@@ -39,11 +39,10 @@ def convert_data(data: Any, to="float32"):
 
         np.savez(path.replace(".npz", ""),
                  x=np.asarray(np.asarray(data)[:, 0].tolist()).astype(to),
-                 y=np.asarray(np.asarray(data)[:, 1].tolist()).astype(to))        
+                 y=np.asarray(np.asarray(data)[:, 1].tolist()).astype(to))
     else:
         return [np.asarray(np.asarray(data)[:, 0].tolist()).astype(to),
                 np.asarray(np.asarray(data)[:, 1].tolist()).astype(to)]
-
 
 
 ########################

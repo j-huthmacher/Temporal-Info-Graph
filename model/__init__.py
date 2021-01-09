@@ -2,8 +2,10 @@
 
     @author: jhuthmacher
 """
-from .temporal_info_graph import TemporalInfoGraph, TemporalConvolution, SpectralConvolution
-from .loss import jensen_shannon_mi
-from .mlp import MLP
+
 from .solver import Solver
-from .tracker import Tracker
+from .loss import jensen_shannon_mi, get_negative_expectation, get_positive_expectation
+from .temporal_info_graph import TemporalInfoGraph, TemporalConvolution, SpectralConvolution
+from .mlp import MLP
+
+

@@ -15,7 +15,7 @@ import numpy as np
 # pylint: disable=import-error
 from visualization import create_gif, class_contour
 from data import KINECT_ADJACENCY
-from model import jensen_shannon_mi, Tracker
+from model.loss import jensen_shannon_mi
 
 #### Local/Tracking Config ####
 # pylint: disable=import-error
@@ -115,7 +115,7 @@ class Solver():
 
         self.epoch = 0
 
-    def train(self, train_config: dict = None, track: Tracker = None,
+    def train(self, train_config: dict = None, track: object = None,
               optimizer: torch.optim.Optimizer = None, encoder: nn.Module = None):
         """ Training procedure.
 
@@ -291,7 +291,7 @@ class Solver():
             if callable(track):
                 track("epoch")
             
-    def test(self, test_config: dict = None, track = None, encoder: nn.Module = None):
+    def test(self, test_config: dict = None, track: object = None, encoder: nn.Module = None):
         """ Function to test the model.
 
             Paramters:

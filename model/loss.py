@@ -36,7 +36,7 @@ def jensen_shannon_mi(enc_global: torch.Tensor, enc_local: torch.Tensor):
 
     #### Discriminator ####
     # Row wise matrix product! Final dimension: (num_graphs, num_graphs * num_nodes)
-    self.discr_matr = torch.bmm(enc_global.repeat(2, 1, 1), enc_local)
+    self.discr_matr = torch.bmm(enc_global.repeat(self.num_graphs, 1, 1), enc_local)
     self.discr_matr = self.discr_matr.type("torch.FloatTensor").permute(1,0,2)
     self.discr_matr = self.discr_matr.reshape(self.num_graphs, (self.num_graphs)*self.num_nodes)
 

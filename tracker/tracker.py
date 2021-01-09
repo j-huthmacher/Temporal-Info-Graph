@@ -227,6 +227,7 @@ class Tracker(object):
                 f.write(f"{loss_fn.pos_samples.shape[1]/36},{loss_fn.neg_samples.shape[1]/36},\
                           {(loss_fn.neg_samples.shape[1]/36) /loss_fn.num_graphs}\n")
             else:
+                f = open(f"{self.local_path}loss.stats.samples.csv", "a")
                 f.write(f"{loss_fn.pos_samples.shape[1]/36},{loss_fn.neg_samples.shape[1]/36},\
                                         {(loss_fn.neg_samples.shape[1]/36) /loss_fn.num_graphs}\n")
             f.close()
@@ -237,6 +238,7 @@ class Tracker(object):
                 f.write("E_neg,E_pos,overall_loss\n")
                 f.write(f"{loss_fn.E_neg},{loss_fn.E_pos},{loss_fn.E_neg - loss_fn.E_pos}\n")
             else:
+                f = open(f"{self.local_path}loss.stats.samples.csv", "a")
                 f.write(f"{loss_fn.E_neg},{loss_fn.E_pos},{loss_fn.E_neg - loss_fn.E_pos}\n")
             f.close()
 

@@ -1,20 +1,13 @@
-"""
-    Implementation of a the Temporal Info Graph.
+""" Implementation of a the Temporal Info Graph.
 
     @author: j-huthmacher
 """
 from typing import Any
+from math import floor
 
 import torch
 import torch.nn as nn
 
-import numpy as np
-from math import floor
-
-from torchsummary import summary
-
-import config.config as cfg
-from config.config import log
 
 class TemporalConvolution(nn.Module):
     """ Building block for doing temporal convolutions.
@@ -121,7 +114,7 @@ class TemporalConvolution(nn.Module):
         return (floor((nominatorH/self.conv.stride[0]) + 1),
                 floor((nominatorW/self.conv.stride[1]) + 1))
 
-        
+
 class SpectralConvolution(nn.Module):
     """ Building block for doing spectral convolutions on a graph.
 
@@ -140,7 +133,7 @@ class SpectralConvolution(nn.Module):
                 k: int
                     Spectral kernel size, i.e. k determines the k-hop neighborhood
                 method: str
-                    Determines which method is used for spectral convolution. 
+                    Determines which method is used for spectral convolution.
                     Options ['gcn']
                 weights: None or torch.Tensor (optional)
                     Predefined weight matrix, if you want to test/validate the calculation.
@@ -161,7 +154,7 @@ class SpectralConvolution(nn.Module):
                 self.W = self.weights
             else:
                 self.W = torch.nn.Parameter(torch.rand((self.c_in, self.c_out)))
-        
+
         # Set activation
         if activation == "leakyReLU":
             self.activation = nn.LeakyReLU()
@@ -169,9 +162,11 @@ class SpectralConvolution(nn.Module):
             self.activation = nn.ReLU()
         else:
             self.activation = None       
-    
+
     @property
     def device(self):
+        """ Device of the model (cpu or cuda)
+        """
         return next(self.parameters()).device
 
     @property
@@ -187,20 +182,20 @@ class SpectralConvolution(nn.Module):
                 A: torch.Tensor
                     Corresponding adjacency matrix of dimension (nodes, nodes)
             Return:
-                torch.Tensor: Convoluted feature tensor (feature map) of 
+                torch.Tensor: Convoluted feature tensor (feature map) of
                 dimension (batch, nodes, time, features)
         """
-        # Adjacency multiplication in time!
+        # Adjacency matrix multiplication in time!
         # TODO: Adapt the indices to omit the permutation before and after.
         self.W = self.W.to(self.device)
         H = torch.einsum("ij,jklm->kilm", [A, X.permute(2, 0, 3, 1)]).to(self.device)
         H = torch.matmul(H, self.W)
-        
+
         return H if self.activation is None else self.activation(H)
 
 
 class TemporalInfoGraph(nn.Module):
-    """ Implementation of the temporal info graph model. 
+    """ Implementation of the temporal info graph model.
     """
 
     def __init__(self, dim_in: tuple, c_in: int, c_out: int = 2, spec_out: int = 2, out: int = 2,
@@ -211,8 +206,8 @@ class TemporalInfoGraph(nn.Module):
                 dim_in: tuple
                     Represents a tuple with the dimensions of the input data, i.e. height and width.
                     In the temporal graph set up this would corresponds to (nodes, features).
-                    Those values are needed to calculate the kernel for the last temporal layer, which 
-                    covers the whole input to finally reduce the data to a "single timestamp".
+                    Those values are needed to calculate the kernel for the last temporal layer,
+                    which covers the whole input to finally reduce the data to a "single timestamp".
                 c_in: int
                     Input channels of the data, i.e. features.
                 c_out: int
@@ -222,8 +217,9 @@ class TemporalInfoGraph(nn.Module):
                 out: int
                     Overall output channels, i.e. after last temporal convoltion.
                 tempKernel: int or tuple
-                    Kernel for the first temporal convolution. At the moment the kernel of the second 
-                    convolution is automatically calculated to convolve always over all remaining time steps.
+                    Kernel for the first temporal convolution. At the moment the kernel of the
+                    second convolution is automatically calculated to convolve always over all
+                    remaining time steps.
                 activation: str
                     Determines which activation function is used. Options: ['leakyReLU', 'ReLU']                
         """
@@ -256,11 +252,11 @@ class TemporalInfoGraph(nn.Module):
         self.tempLayer1 = self.tempLayer1.to(self.device)
         self.specLayer1 = self.specLayer1.to(self.device)
         self.tempLayer2 = self.tempLayer2.to(self.device)
-    
+
     @property
     def device(self):
         return next(self.parameters()).device
-    
+
     @property
     def is_cuda(self):
         return next(self.parameters()).is_cuda
@@ -297,6 +293,7 @@ class TemporalInfoGraph(nn.Module):
         H = self.tempLayer1(X) # Returns: (batch, out_features, nodes, time)
 
         #### Masking Padding ####
+        # TODO: Enhance Masking + Unit Test
         batch_size, _, num_nodes, num_frames = X.shape
         _, out_feature, _, out_time = H.shape
         pad_idx = torch.repeat_interleave((~X.bool()).all(dim=1).all(dim=1),
@@ -309,16 +306,17 @@ class TemporalInfoGraph(nn.Module):
         Z = Z if self.activation is None else self.activation(Z)
 
         # Mean readout: Average each feature over all nodes --> dimension (features, 1)
-        # Average over dimension 2, dim 2 are the nodes (We want to aggregate the representation of each node!)
-        global_Z = Z.mean(dim=2) # Simple mean readout
-        local_Z = Z
-
-        # Alternatively another fully connected feed forward network to encode the embedding
+        # Average over dimension 2, dim 2 corresponds to the nodes
+        # (We want to aggregate the representation of each node!)
+        global_Z = Z.mean(dim=2) # Simple mean readout, dim: (batch_size, emb_features)
+        local_Z = Z  # dim: (batch_size, emb_features, nodes), TODO: Validate the dimensions
 
         # Remove "empty" dimensions, i.e. dim = 1
         return torch.squeeze(global_Z, dim=-1), torch.squeeze(local_Z, dim=-1)
 
     @property
     def num_paramters(self):
+        """ Number of paramters of the model.
+        """
         # return(summary(self, (self.c_in, self.dim_in[0], self.dim_in[1])))
         return f"Parameters {sum(p.numel() for p in self.parameters())}"

@@ -1,74 +1,62 @@
-"""
+""" Loss related code
+
     @author: jhuthmacher
 """
+import math
 
+import matplotlib
 import torch
 import torch.nn.functional as F
 
-import math
+
+matplotlib.use('Agg')
 
 
-def jensen_shannon_mi(enc_global: torch.Tensor, enc_local: torch.Tensor, path: str = None):
+def jensen_shannon_mi(enc_global: torch.Tensor, enc_local: torch.Tensor):
     """ Jensen-Shannon mutual information estimate.
 
         Parameters:
             enc_local: torch.Tensor
-                Represents the encoded node/patch level embedding. Dimension (batch_size, embedding_dim, num_nodes).
-                I.e. we have per batch entry a matrix where each row corresponds to the embedding of the corresponding node.
+                Represents the encoded node/patch level embedding.
+                Dimension (batch_size, embedding_dim, num_nodes).
+                I.e. we have per batch entry a matrix where each row corresponds to the embedding
+                of the corresponding node.
             enc_global: torch.Tensor
-                Represents the encoded graph level/global embedding. Dimension (batch_size, embedding_dim)
+                Represents the encoded graph level/global embedding.
+                Dimension (batch_size, embedding_dim)
                 I.e. we have per batch entry a single embedding of the corresponding graph.
         Return:
-            torch.Tensor: Tensor containing the loss (mutual information estimate). 
-            I.e. one loss (mi estimate) per graph.
+            torch.Tensor: Tensor containing the (batch) loss (mutual information estimate).
     """
+    #### For Tracking ####
+    self = jensen_shannon_mi
 
-    num_graphs = enc_global.shape[0]
-    num_nodes = enc_local.shape[-1]
-    
-    #################
-    # Discriminator #
-    #################
-    # Row wise dot product!
-    # I.e. we get for each node and for each graph a vector with node size, which can be interpreted as our discriminator vector!
-    # Output: Per batch entry we get a disciriminator vector (from the formular T(h, H), but T is not a neural net yet)
-    # yhat contains negative and positive samples!
-    yhat = torch.bmm(enc_local.permute(0, 2, 1),
-                     enc_global.view(enc_global.shape[0],
-                     enc_global.shape[1],1)).type("torch.FloatTensor")
-    
-    ############
-    # Sampling #
-    ############
-    yhat_matr = torch.flatten(yhat).repeat(num_graphs,1,1)\
-                  .reshape(num_graphs, num_graphs, num_nodes)\
-                  .type("torch.FloatTensor")
+    self.num_graphs = enc_global.shape[0]
+    self.num_nodes = enc_local.shape[-1]
 
-    # Create unit matrix to mask positive and negative samples
-    unit = torch.eye(num_graphs, num_graphs).reshape((num_graphs, num_graphs, 1))
-    unit = unit.repeat(1, 1, num_nodes).type("torch.ShortTensor")
+    #### Discriminator ####
+    # Row wise matrix product! Final dimension: (num_graphs, num_graphs * num_nodes)
+    self.discr_matr = torch.bmm(enc_global.repeat(2, 1, 1), enc_local)
+    self.discr_matr = self.discr_matr.type("torch.FloatTensor").permute(1,0,2)
+    self.discr_matr = self.discr_matr.reshape(self.num_graphs, (self.num_graphs)*self.num_nodes)
 
-    pos_samples = yhat_matr[unit == 1].reshape(num_graphs, num_nodes) # equivalent to torch.diagonal(yhat_matr)
-    neg_samples = yhat_matr[unit == 0].reshape(num_graphs, (num_graphs-1)*num_nodes) # Checked!
+    #### Sampling ####
+    # Diagonal with blocks 'num_nodes' ones on the diagonal
+    mask = torch.block_diag(*[torch.ones(self.num_nodes) for _ in range(self.num_graphs)])
 
-    
-    # Batch loss, i.e. aggregate and normalize
-    E_pos = get_positive_expectation(pos_samples, average=False).sum()
-    E_pos = (E_pos / num_nodes) / yhat.shape[0]  # Normalize with the size of the batch to get the batch loss.
-    E_neg = get_negative_expectation(neg_samples, average=False).sum()
-    E_neg = (E_neg / (num_nodes * (num_graphs - 1))) / yhat.shape[0]  # Normalize with the size of the batch to get the batch loss.
+    self.pos_samples = self.discr_matr[mask == 1].reshape(self.num_graphs, self.num_nodes)
+    self.neg_samples = self.discr_matr[mask == 0].reshape(self.num_graphs,
+                                                          (self.num_graphs - 1) * self.num_nodes)
 
-    # TODO: Track ratio of negative/positive samples
-    if path is not None:
-        f = open(f"{path}loss.stats.samples.txt", "a")
-        f.write("{num_pos_samples: "+ str(pos_samples.shape[1]/36) + ", num_neg_samples: " + str(neg_samples.shape[1]/36) + ", ratio: " + str((neg_samples.shape[1]/36) /num_graphs) + "}\n")
-        f.close()
+    #### Expectation Calculation ####
+    # Normalize with the size of the batch to get the batch loss.
+    self.E_pos = get_positive_expectation(self.pos_samples, average=False).sum()
+    self.E_pos = (self.E_pos / (self.num_nodes * self.num_graphs)) 
+    self.E_neg = get_negative_expectation(self.neg_samples, average=False).sum()
+    self.E_neg = (self.E_neg / (self.num_nodes * (self.num_graphs - 1) * self.num_graphs))
 
-        f = open(f"{path}loss.stats.expectations.txt", "a")
-        f.write("{E_neg: "+ str(E_neg) + ", E_pos: " + str(E_pos) + ", overall_loss" + str(E_neg - E_pos) +"}\n")
-        f.close()
-
-    return E_neg - E_pos
+    #### Actual Loss Calculation ####
+    return self.E_neg - self.E_pos
 
 
 def get_positive_expectation(p_samples: torch.Tensor, measure: str = "JSD", average: bool = True):
@@ -78,8 +66,9 @@ def get_positive_expectation(p_samples: torch.Tensor, measure: str = "JSD", aver
 
         Paramters:
             p_samples: torch.Tensor
-                Tensor of dimension (num_graphs, num_nodes*num_pos_pairs). I.e. the tensor contains per column i
-                the positive samples (stacked together if multiple samples) of the correspondings graph i.
+                Tensor of dimension (num_graphs, num_nodes*num_pos_pairs).
+                I.e. the tensor contains per column i the positive samples (stacked together if
+                multiple samples) of the correspondings graph i.
             measure: str
                 Determines wich method is used for calculating the positive part of a divergence.
             average: bool
@@ -122,8 +111,9 @@ def get_negative_expectation(n_samples: torch.Tensor, measure: str ="JSD", avera
 
         Paramters:
             p_samples: torch.Tensor
-                Tensor of dimension (num_graphs, num_nodes*num_pos_pairs). I.e. the tensor contains per column i
-                the negative samples (stacked together if multiple samples) of the correspondings graph i.
+                Tensor of dimension (num_graphs, num_nodes*num_pos_pairs).
+                I.e. the tensor contains per column i the negative samples (stacked together if
+                multiple samples) of the correspondings graph i.
             measure: str
                 Determines wich method is used for calculating the negative part of a divergence.
             average: bool
@@ -144,8 +134,8 @@ def get_negative_expectation(n_samples: torch.Tensor, measure: str ="JSD", avera
         Eq = torch.exp(n_samples)
     elif measure == 'RKL':
         Eq = n_samples - 1.
-    elif measure == 'DV':
-        Eq = log_sum_exp(n_samples, 0) - math.log(n_samples.size(0))
+    # elif measure == 'DV':
+    #     Eq = log_sum_exp(n_samples, 0) - math.log(n_samples.size(0))
     elif measure == 'H2':
         Eq = torch.exp(n_samples) - 1.
     elif measure == 'W1':

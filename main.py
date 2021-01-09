@@ -1,48 +1,36 @@
+#pylint: disable=line-too-long
 """ Main file.
+
+    @author: jhuthmacher
 """
-import argparse
-from pathlib import Path
-import torch
-import torch.nn as nn
-import yaml
 import json
 
-from model.temporal_info_graph import TemporalInfoGraph
-from model.mlp import MLP
-from model.tracker import Tracker
-from model.solver import Solver
+import argparse
+import torch
+import yaml
+
+#pylint: disable=import-error
+from tracker import Tracker
 from experiments import  experiment
 
 
-from data import KINECT_ADJACENCY
-from data.tig_data_set import TIGDataset
-
-from config.config import log
-
-
-##############
-# Set up CLI #
-##############
+#### Set Up CLI ####
 parser = argparse.ArgumentParser(prog='tig', description='Temporal Info Graph')
 
+#### Model/Experiment CLI ####
 parser.add_argument('--config', dest='config',
                     help='Defines which configuration should be usd. Can be a name, .json or .yml file.')
-
 parser.add_argument('--name', dest='name', default="TIG_Experiment",
                     help='Name of the experiment.')
-
 parser.add_argument('--tracking', dest='tracking', default="remote",
                     help='[remote, local], default: remote')
-
 parser.add_argument('--train', dest='train', action='store_true',
                     help='Flag to select trainings mode.')
-
 parser.add_argument('--downstream', dest='downstream', action='store_true',
                     help='Flag to determine if the downstream training should be executed.')
-
 parser.add_argument('--disable_local_store', dest='disable_local_store', action='store_true',
                     help='Flag to determine if the models should be locally stored. Default: Models are stored locally.')
-
+#### Data CLI ####
 parser.add_argument('--prep_data', dest='prep_data', action="store_true",
                     help='Prepare data.')
 
@@ -51,17 +39,15 @@ parser.add_argument('--prep_data', dest='prep_data', action="store_true",
 
 args = parser.parse_args()
 
-
-#############
-# Execution #
-#############
-if args.train:    
+#### Execution ####
+if args.train:
     db_url = open(".mongoURL", "r").readline()
     torch.cuda.empty_cache()
 
     name = args.name
     config = {}
 
+    #### Load Configuration ####
     if args.config is not None:
         if ".yml" in args.config or ".yaml" in args.config:
             with open(args.config) as file:
@@ -80,6 +66,7 @@ if args.train:
             name += "_standard"
             config = yaml.load(file, Loader=yaml.FullLoader)["standard"]
 
+    #### Tracker Set Up ####
     tracking = {"ex_name": name}
     if args.tracking == "remote":
         tracking = {
@@ -94,9 +81,11 @@ if args.train:
     else:
         tracker = Tracker(**tracking)
 
+    # For reproducibility
     torch.manual_seed(0)
     config["seed"] = 0
 
+    # experiment is the template function that is executed by the tracker and configured by "config"
     tracker.track(experiment, config)
 
 
@@ -115,4 +104,3 @@ elif args.prep_data:
     # _ = TIGDataset(paths = data_paths, output=output, verbose=True)
 
     # log.info("Data set processed")
-

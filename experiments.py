@@ -1,4 +1,4 @@
-""" File containing different experiement configurations.
+"""
     @author: jhuthmacher
 """
 import io
@@ -10,13 +10,23 @@ import torch.nn as nn
 import torch.optim as optim
 from imblearn.over_sampling import RandomOverSampler
 from sklearn.model_selection import train_test_split
+from sklearn.decomposition import PCA
 from torch.utils.data import DataLoader
 
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+import sacred
+
+# pylint: disable=import-error
 from config.config import log
 from data import KINECT_ADJACENCY
 from data.tig_data_set import TIGDataset
-from model import MLP, Solver, TemporalInfoGraph, Tracker
+from model import MLP, Solver, TemporalInfoGraph
+from tracker import Tracker
+from evaluation import svc_classify, mlp_classify, randomforest_classify
 
+#### Default Experiment Configuration ####
 default = {
     "data": {
     },
@@ -36,9 +46,9 @@ default = {
     },
 }
 
-#### Experiment Function that contains the whole procedure of an experiment ####
+#### Main Experiment Function ####
 def experiment(tracker: Tracker, config: dict):
-    """ Default experiment function.
+    """ Default experiment function to run an machine learning experiment.
 
         Parameters:
             tracker: Tracker
@@ -46,17 +56,24 @@ def experiment(tracker: Tracker, config: dict):
             config: dict
                 Experiment configuration that well be propagated down to the run function.
     """
+    #### Merge Custom Config with Default ####
     config = {**default, **config}
 
-    def run(_run=None):
+    def run(_run: sacred.run.Run = None):
         """ Function that is executed as an experiment by Sacred.
+
+            Paramters:
+                _run: sacred.run.Run
+                    Sacred run object.
         """
         log.info("Start experiment.")
         if _run is not None:
             tracker.run = _run
-            tracker.id = _run._id
+            tracker.id = _run._id  #pylint: disable=protected-access
         tracker.log_config(f"{tracker.tag}local_path", str(tracker.local_path))
+        
 
+        #### Data Set Up ####
         data = TIGDataset(**config["data"])
 
         if not config["stratify"] or config["stratify"] == {}:
@@ -79,6 +96,7 @@ def experiment(tracker: Tracker, config: dict):
         else:
             loader = [train_loader, val_loader]
 
+        #### TIG Set Up ####
         tig = TemporalInfoGraph(**config["encoder"]).cuda()
         solver = Solver(tig, loader)
 
@@ -86,6 +104,7 @@ def experiment(tracker: Tracker, config: dict):
         tracker.track_traning(solver.train)(config["encoder_training"])
 
         if config["emb_tracking"]:
+            # Track the final embeddings after the TIG encoder is trained.
             emb_x = np.array([])
             emb_y = np.array([])
             for batch_x, batch_y in train_loader:
@@ -108,14 +127,13 @@ def experiment(tracker: Tracker, config: dict):
 
             #### Local Embedding Tracking ####
             np.savez(tracker.local_path+"embeddings", x=emb_x, y=emb_y)
-
+        
         if not "classifier" in config or not isinstance(config["classifier"], dict):
+            # If the experiment only trains the encoder
             return
 
-        #### DOWNSTREAM ####
+        #### MLP Set Up ####
         tracker.tag = "MLP."
-        
-        #### Set Up Downstream Model ####
         num_classes = (config["classifier"]["num_classes"]
                        if "num_classes" in config["classifier"]
                        else int(np.max(data.y) + 1))
@@ -133,15 +151,15 @@ def experiment(tracker: Tracker, config: dict):
 
 
 class Experiment():
-    """ Experiment object to easy access output files from an experiment run.
+    """ Experiment class to easy access output files from an experiment run in an
+        object oriented matter.
     """
     def __init__(self, path: str):
         """ Initilization.
 
             Parameters:
                 path: str
-                    Path pointing to the experiment folder created by an 
-                    experiment run.
+                    Path pointing to the experiment folder created by an experiment run.
         """
         self.path = path
         try:
@@ -155,7 +173,7 @@ class Experiment():
             del data
             del emb_x
             del emb_y
-        except:
+        except:  #pylint: disable=bare-except
             # Not each experiement has embeddings saved
             pass
 
@@ -163,10 +181,9 @@ class Experiment():
             self.classifier = torch.load(f"{path}TIG_MLP.pt").cuda()
             self.clf_train_loss = np.load(f"{path}TIG_MLP.train_losses.npy")
             self.clf_val_loss = np.load(f"{path}TIG_MLP.val_losses.npy")
-            self.clf_train_metrics = np.load(
-                f"{path}TIG_MLP.train.metrics.npy")
+            self.clf_train_metrics = np.load(f"{path}TIG_MLP.train.metrics.npy")
             self.clf_val_metrics = np.load(f"{path}TIG_MLP.train.metrics.npy")
-        except:
+        except:  #pylint: disable=bare-except
             # Not each experiement has  a classifier
             pass
 
@@ -174,13 +191,13 @@ class Experiment():
             self.tig = torch.load(f"{path}TIG_.pt").cuda()
             self.tig_train_loss = np.load(f"{path}TIG_train_losses.npy")
             self.tig_val_loss = np.load(f"{path}TIG_val_losses.npy")
-        except:
+        except:  #pylint: disable=bare-except
             pass
 
         try:
             self.tig_train_metrics = np.load(f"{path}TIG_train.metrics.npy")
             self.tig_val_metrics = np.load(f"{path}TIG_train.metrics.npy")
-        except:
+        except:  #pylint: disable=bare-except
             pass
 
         with open(f"{path}config.json") as file:
@@ -189,15 +206,76 @@ class Experiment():
 
     @property
     def emb(self):
+        """ Embeddings from the encoder (complete data set).
+        """
         try:
             return self.emb_loader.dataset
-        except:
+        except:  #pylint: disable=bare-except
             return None
 
     @property
     def emb_x(self):
-        return np.array(list(np.array(self.emb)[:, 0]))
+        """ Features of the emebddings.
+        """
+        return np.array(list(np.array(self.emb)[:, 0])) if self.emb is not None else None
 
     @property
     def emb_y(self):
-        return np.array(list(np.array(self.emb)[:, 1]))
+        """ Labels of the emebddings.
+        """
+        return np.array(list(np.array(self.emb)[:, 1])) if self.emb is not None else None
+
+    def evaluate_emb(self, plot: bool = False):
+        """ Evaluate the quality of the embeddings by testing different classifier.
+
+            Paramters:
+                plot: bool
+                    If true the embeddings with their predictions are plotted.
+        """
+        #### SVM Classifier ####
+        pred, acc = svc_classify(self.emb_x, self.emb_y, True)
+
+        if plot:
+            pca = PCA(n_components=2, random_state=123)
+            x = pca.fit_transform(self.emb_x)
+
+            _, ax = plt.subplots(figsize=(5,5))
+            ax.set_title(f"SVM - Classifier (Avg. accuracy: {acc})")
+            ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
+                        cmap=sns.color_palette("Spectral", as_cmap=True))
+            ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
+                        cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
+
+        print("SVM Acc.", acc)
+
+        #### MLP Classifier ####
+        pred, acc = mlp_classify(self.emb_x, self.emb_y, True)
+
+        if plot:
+            pca = PCA(n_components=2, random_state=123)
+            x = pca.fit_transform(self.emb_x)
+
+            _, ax = plt.subplots(figsize=(5,5))
+            ax.set_title(f"MLP (Sklearn) - Classifier (Avg. accuracy: {acc})")
+            ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
+                        cmap=sns.color_palette("Spectral", as_cmap=True))
+            ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
+                        cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
+
+        print("MLP Acc.", acc)
+
+        #### Random Forest Classifier ####
+        pred, acc = randomforest_classify(self.emb_x, self.emb_y, True)
+
+        if plot:
+            pca = PCA(n_components=2, random_state=123)
+            x = pca.fit_transform(self.emb_x)
+
+            _, ax = plt.subplots(figsize=(5,5))
+            ax.set_title(f"Random Forest - Classifier (Avg. accuracy: {acc})")
+            ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
+                        cmap=sns.color_palette("Spectral", as_cmap=True))
+            ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
+                        cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
+
+        print("Random Forest Acc.", acc)

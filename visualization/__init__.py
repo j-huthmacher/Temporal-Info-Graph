@@ -1,4 +1,6 @@
 """
+    @author: jhuthmacher
 """
-from visualization.plots import class_contour, eval_plots, plot_desc_loss_acc, heatmap, plot_heatmaps
+#pylint: disable=import-error,no-name-in-module
+from visualization.plots import plot_emb_pred, plot_eval, plot_heatmap, plot_heatmaps
 from visualization.animation import animate_skeleton, create_gif, images

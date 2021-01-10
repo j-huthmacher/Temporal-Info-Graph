@@ -1,21 +1,22 @@
-""" Some animation helper function to visualize the dynamic graph.
-
-    Developed to be executed from a jupyter notebook.
+""" Some animation helper function to visualize dynamics.
 
     @author: jhuthmacher
 """
 from typing import Any
-
+import os 
+from pathlib import Path
+import glob
+import re
 import io
+
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 import matplotlib.animation
 import numpy as np
 import pandas as pd
 
 from PIL import Image
 
-from copy import copy, deepcopy
+#pylint: diable=import-error
 from data import KINECT_ADJACENCY
 
 plt.rcParams["animation.html"] = "jshtml"
@@ -26,37 +27,44 @@ images = {
 
 }
 
-def create_gif(fig, path, fill=True):
-    """
-    """
-    buf = io.BytesIO()
-    fig.savefig(buf, format='png', bbox_inches="tight")
-    buf.seek(0)
+def create_gif(fig: Any, path: str):
+    """ Creates a given either by handover successive each frame or by provide a path where
+        all frames are located.
 
-    im = Image.open(buf)
-
-    if not path in images:
-        images[path] = [im]
+        Parameters:
+            fig: Any (str or matplotlib.figure.Figure)
+                Either a path to a folder that contains all frames of the gif or a single matplotlib
+                figure.
+            path: str
+                Path for saving the output gif.
+    """
+    if isinstance(fig, str):
+        # fig is path
+        img, *imgs = [Image.open(f) for f in sorted(glob.glob(fig+"/*.png"), key=lambda x: int("".join(re.findall(r'\d+', x))))]
+        img.save(fp=path, format='GIF', append_images=imgs,
+                 save_all=True, duration=200, loop=0)
+        imgs[-1].save(path.replace(".gif", ".final.png"))
     else:
-        images[path].append(im)
+        # fig is a matplot figure
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', bbox_inches="tight")
+        buf.seek(0)
 
-    
-    im.save(fp=path, format='GIF', append_images=images[path],
+        im = Image.open(buf)
+
+        if not path in images:
+            images[path] = [im]
+        else:
+            images[path].append(im)
+
+        Path(os.path.split(path)[0]).mkdir(parents=True, exist_ok=True)
+
+        im.save(fp=path, format='GIF', append_images=images[path],
                 save_all=True, duration=200, loop=0)
-    fig.savefig(path.replace(".gif", ".final.png"), dpi=150)             
-    if not fill:   
-        images[path].clear()
+        fig.savefig(path.replace(".gif", ".final.png"), dpi=150)
+        # if not fill:
+        #     images[path].clear()
 
-    
-
-    # # filepaths
-    # fp_in = "/path/to/image_*.png"
-    # fp_out = "/path/to/image.gif"
-
-    # https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#gif
-    # img, *imgs = [Image.open(f) for f in sorted(glob.glob(fp_in))]
-    # img.save(fp=fp_out, format='GIF', append_images=imgs,
-    #          save_all=True, duration=200, loop=0)
 
 def animate_skeleton(data: pd.DataFrame, annot: bool = False, lim_frames: Any = None):
     """ Function to animate a skeleton.
@@ -68,6 +76,7 @@ def animate_skeleton(data: pd.DataFrame, annot: bool = False, lim_frames: Any = 
                 Data frame contains the data after the preprocessing step.
             annot: bool
                 Determines if the joints/nodes should be annotated with numbers.
+                Depricated.
             lim_frames: None or int
                 Determines if the animated frames should be limited. For instance, if 
                 lim_frames = 10 only the first 10 frames are animated.
@@ -87,7 +96,7 @@ def animate_skeleton(data: pd.DataFrame, annot: bool = False, lim_frames: Any = 
             x.append(val["x"])
             y.append(val["y"]) 
             annotations.append(ax.annotate(i, (val["x"], val["y"])))
-    except:
+    except:  #pylint: disable=bare-except
         # Ignore empty skeletons
         pass
     
@@ -96,7 +105,7 @@ def animate_skeleton(data: pd.DataFrame, annot: bool = False, lim_frames: Any = 
 
     # Edges
     lines = []
-    for i in range(0, len(x)):
+    for i in range(0, len(x)):  #pylint: disable=consider-using-enumerate
         for e_x, e_y in zip(x[np.where(A[i]==1)], y[np.where(A[i]==1)]):
             lines.append(ax.plot([x[i],e_x], [y[i], e_y], linestyle='-', linewidth=0.5, color='#c4c4c4', markersize=0))
 
@@ -107,9 +116,7 @@ def animate_skeleton(data: pd.DataFrame, annot: bool = False, lim_frames: Any = 
     ax.set_xlim(-1,1)
     ax.set_ylim(-1,0)
 
-    ##################################################
-    # Animation function that is called sequentially #
-    ##################################################
+    #### Animation function that is called sequentially ####
     def animate(f):
         if f == 0 or len(data["frames"][f]["skeletons"]) == 0:
             return nodes, 
@@ -132,38 +139,36 @@ def animate_skeleton(data: pd.DataFrame, annot: bool = False, lim_frames: Any = 
             nodes.set_offsets(np.c_[x, y])
 
             x = np.asarray(x)
-            y = np.asarray(y)            
-            
+            y = np.asarray(y)
+
             if lines_empty:
-                for i in range(0, len(x)):
+                for i in range(0, len(x)):  #pylint: disable=consider-using-enumerate
                     for e_x, e_y in zip(x[np.where(A[i]==1)], y[np.where(A[i]==1)]):
                         lines.append(ax.plot([x[i],e_x], [y[i], e_y], linestyle='-', linewidth=0.5, color='#c4c4c4', markersize=0))
             else:
                 j = 0
-                for i in range(0, len(x)):
+                for i in range(0, len(x)):  #pylint: disable=consider-using-enumerate
                     for e_x, e_y in zip(x[np.where(A[i]==1)], y[np.where(A[i]==1)]):
                         lines[j][0].set_ydata([y[i], e_y])
                         lines[j][0].set_xdata([x[i],e_x])                    
                         j += 1
-            
+
             if len(lines) == 0 and len(x) == 0:
-                for i in range(0, len(x)):
+                for i in range(0, len(x)):  #pylint: disable=consider-using-enumerate
                     for e_x, e_y in zip(x[np.where(A[i]==1)], y[np.where(A[i]==1)]):
                         lines.append(ax.plot([x[i],e_x], [y[i], e_y], linestyle='-', linewidth=0.5, color='#c4c4c4', markersize=0))
 
-        except Exception as e:#
+        except Exception as e:  #pylint: disable=broad-except,unused-variable
             # print(e)
-            # Not skeleton available! Do nothing.
+            # No skeleton available! Do nothing.
             return nodes, 
 
         annotations_empty = len(annotations) == 0
         lines_empty = len(lines) == 0
 
         return nodes,
-    
-    ################
-    # Animate plot #
-    ################
+
+    #### Animate Plot ####
     plt.close(fig)
     ani = matplotlib.animation.FuncAnimation(fig, animate, interval=200, blit=True, repeat=False,
                                              frames= len(data["frames"]) if lim_frames is None else lim_frames)

@@ -24,7 +24,7 @@ from model import MLP, TemporalInfoGraph
 from model import get_negative_expectation as neg_exp
 from model import get_positive_expectation as pos_exp
 from config.config import log
-from visualization import create_gif, plot_desc_loss_acc, plot_heatmaps
+from visualization import create_gif, plot_eval, plot_heatmaps
 from data import KINECT_ADJACENCY
 
 #### "Global" Access to Tracker ####
@@ -296,7 +296,6 @@ class Tracker(object):
                         "data": {
                             "TIG Train Loss (JSD MI)": self.solver.train_batch_losses[self.solver.batch::len(self.solver.train_loader)],
                         },
-                        "curr_epoch": self.solver.epoch,
                         "n_epochs": self.solver.train_cfg["n_epochs"],
                         "title": "Loss"
                     },
@@ -304,7 +303,6 @@ class Tracker(object):
                         "data": {
                             "Accuracy": acc[self.solver.batch],
                         },
-                        "curr_epoch": self.solver.epoch,
                         "n_epochs": self.solver.train_cfg["n_epochs"],
                         "title": "Accuracy",
                         "line_mode": max
@@ -345,34 +343,41 @@ class Tracker(object):
                 emb_x = self.solver.encoder(np.array(list(emb_x)).transpose((0,3,2,1)), KINECT_ADJACENCY)[0]
                 self.solver.encoder = self.solver.encoder.to(device)
 
-            loss = {
-                "MLP Train Loss": self.solver.train_losses,
-                "MLP Val Loss": self.solver.train_losses,
-            }
-
-            metric = {
-                "MLP Top-1 Acc.": np.array(self.solver.train_metrics)[:, 0],
-                "MLP Top-5 Acc.": np.array(self.solver.train_metrics)[:, 1],
-                "MLP Val Top-1 Acc.": np.array(self.solver.val_metrics)[:, 0],
-                "MLP Val Top-5 Acc.": np.array(self.solver.val_metrics)[:, 1],
+            args = {
+                "emb_cfg": {
+                    "x": emb_x,
+                    "y": emb_y,
+                    "clf": self.solver.model,
+                    "mode": "PCA"
+                },
+                "loss_cfg": {
+                    "data": {
+                        "MLP Train Loss": self.solver.train_losses,
+                        "MLP Val Loss": self.solver.train_losses,
+                    },
+                    "n_epochs": self.solver.train_cfg["n_epochs"]
+                },
+                "metric_cfg": {
+                    "data": {
+                        "MLP Top-1 Acc.": np.array(self.solver.train_metrics)[:, 0],
+                        "MLP Top-5 Acc.": np.array(self.solver.train_metrics)[:, 1],
+                        "MLP Val Top-1 Acc.": np.array(self.solver.val_metrics)[:, 0],
+                        "MLP Val Top-5 Acc.": np.array(self.solver.val_metrics)[:, 1],
+                    },
+                    "n_epochs": self.solver.train_cfg["n_epochs"]
+                }
             }
 
             #### Plot embeddings with loss/metric curve ####
-            fig = plot_desc_loss_acc(emb_x,
-                                     emb_y,
-                                     self.solver.model,
-                                     loss = loss,
-                                     metric=metric,
-                                     n_epochs = self.solver.train_cfg["n_epochs"],
-                                     title=f"MLP Decision Boundary - Epoch: {self.solver.epoch}",
-                                     model_name="MLP")
+            fig = plot_eval(**args, 
+                            title=f"MLP Decision Boundary - Epoch: {self.solver.epoch}",
+                            model_name="MLP")
             plt.close()
 
             #### Store plots and/or create gif ####
             path = self.local_path + "MLP.decision.boundaries.gif.files/"
             if "intermediate_gif" in self.cfg and self.cfg["intermediate_gif"]:
-                create_gif(fig, path=self.local_path+"MLP.decision.boundaries.gif",
-                           fill=(self.solver.train_cfg["n_epochs"] - 1 != self.solver.epoch))
+                create_gif(fig, path=self.local_path+"MLP.decision.boundaries.gif")
             elif self.solver.epoch == self.solver.train_cfg["n_epochs"] - 1:
                 # Last epoch create gif
                 create_gif(path, path=self.local_path+"MLP.decision.boundaries.gif")
@@ -389,24 +394,25 @@ class Tracker(object):
 
             emb_y = np.array(self.solver.train_loader.dataset, dtype=object)[:, 1]
 
-            loss = {
-                "TIG Train Loss (JSD MI)": self.solver.train_losses,
-                # "TIG Val Loss (JSD MI)": self.solver.train_losses,
+            args = {
+                "emb_cfg": {
+                    "x": emb_x,
+                    "y": emb_y,
+                    "mode": "" if emb_x.shape[1] <= 2 else "PCA"
+                },
+                "loss_cfg": {
+                    "data": {
+                        "TIG Train Loss (JSD MI)": self.solver.train_losses,
+                        "TIG Val Loss (JSD MI)": self.solver.train_losses,
+                    },
+                    "n_epochs": self.solver.train_cfg["n_epochs"]
+                }
             }
 
-            # TODO: This doesn't work. See plots.
-            pca_text = "" if emb_x.shape[1] <= 2 else "PCA"
-
             #### Plot embeddings with loss/metric curve (PCA or plain) ####
-            fig = plot_desc_loss_acc(emb_x,
-                                     emb_y,
-                                     None,
-                                     loss,
-                                     None,
-                                     n_epochs = self.solver.train_cfg["n_epochs"],
-                                     title=f"TIG Embeddings pca_text - Epoch: {self.solver.epoch}",
-                                     model_name="TIG",
-                                     mode=pca_text)
+            fig = plot_eval(**args,
+                            title=f"TIG Embeddings {args['emb_cfg']['mode']} - Epoch: {self.solver.epoch}",
+                            model_name="TIG")
             
             #### Store plots and/or create gif ####
             if self.solver.epoch == 0:
@@ -417,8 +423,7 @@ class Tracker(object):
 
             path = self.local_path + "TIG.embeddings.pca.gif.files/"
             if "intermediate_gif" in self.cfg and self.cfg["intermediate_gif"]:
-                create_gif(fig, path=self.local_path+"TIG.embeddings.pca.gif",
-                           fill=(self.solver.train_cfg["n_epochs"] - 1 != self.solver.epoch))
+                create_gif(fig, path=self.local_path+"TIG.embeddings.pca.gif")
             elif self.solver.epoch == self.solver.train_cfg["n_epochs"] - 1:
                 # Last epoch create gif
                 create_gif(path, path=self.local_path+"TIG.embeddings.pca.gif")
@@ -428,15 +433,10 @@ class Tracker(object):
                 fig.savefig(path+f"/{self.solver.epoch}.TIG.embeddings.pca.png")
 
             #### Plot embeddings with loss/metric curve (t-SNE) ####
-            fig = plot_desc_loss_acc(emb_x,
-                                     emb_y,
-                                     None,
-                                     loss,
-                                     None,
-                                     n_epochs = self.solver.train_cfg["n_epochs"],
-                                     title=f"TIG Embeddings (TSNE) - Epoch: {self.solver.epoch}",
-                                     model_name="TIG",
-                                     mode="TSNE")
+            args["emb_cfg"]["mode"] = "TSNE"
+            fig = plot_eval(**args, 
+                            title=f"TIG Embeddings (TSNE) - Epoch: {self.solver.epoch}",
+                            model_name="TIG")
 
             #### Store plots and/or create gif ####
             if self.solver.epoch == 0:
@@ -448,8 +448,7 @@ class Tracker(object):
 
             path = self.local_path+"TIG.embeddings.tsne.gif.files/"
             if "intermediate_gif" in self.cfg and self.cfg["intermediate_gif"]:
-                create_gif(fig, path=self.local_path+"TIG.embeddings.tsne.gif",
-                    fill=(self.solver.train_cfg["n_epochs"] - 1 != self.solver.epoch))
+                create_gif(fig, path=self.local_path+"TIG.embeddings.tsne.gif")
             elif self.solver.epoch == self.solver.train_cfg["n_epochs"] - 1:
                 # Last epoch create gif
                 create_gif(path, path=self.local_path+"TIG.embeddings.tsne.gif")

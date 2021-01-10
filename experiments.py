@@ -24,7 +24,7 @@ from data import KINECT_ADJACENCY
 from data.tig_data_set import TIGDataset
 from model import MLP, Solver, TemporalInfoGraph
 from tracker import Tracker
-from evaluation import svc_classify, mlp_classify, randomforest_classify
+# from evaluation import svc_classify, mlp_classify, randomforest_classify
 
 #### Default Experiment Configuration ####
 default = {
@@ -225,57 +225,57 @@ class Experiment():
         """
         return np.array(list(np.array(self.emb)[:, 1])) if self.emb is not None else None
 
-    def evaluate_emb(self, plot: bool = False):
-        """ Evaluate the quality of the embeddings by testing different classifier.
+    # def evaluate_emb(self, plot: bool = False):
+    #     """ Evaluate the quality of the embeddings by testing different classifier.
 
-            Paramters:
-                plot: bool
-                    If true the embeddings with their predictions are plotted.
-        """
-        #### SVM Classifier ####
-        pred, acc = svc_classify(self.emb_x, self.emb_y, True)
+    #         Paramters:
+    #             plot: bool
+    #                 If true the embeddings with their predictions are plotted.
+    #     """
+    #     #### SVM Classifier ####
+    #     pred, acc = svc_classify(self.emb_x, self.emb_y, True)
 
-        if plot:
-            pca = PCA(n_components=2, random_state=123)
-            x = pca.fit_transform(self.emb_x)
+    #     if plot:
+    #         pca = PCA(n_components=2, random_state=123)
+    #         x = pca.fit_transform(self.emb_x)
 
-            _, ax = plt.subplots(figsize=(5,5))
-            ax.set_title(f"SVM - Classifier (Avg. accuracy: {acc})")
-            ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
-                        cmap=sns.color_palette("Spectral", as_cmap=True))
-            ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
-                        cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
+    #         _, ax = plt.subplots(figsize=(5,5))
+    #         ax.set_title(f"SVM - Classifier (Avg. accuracy: {acc})")
+    #         ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
+    #                     cmap=sns.color_palette("Spectral", as_cmap=True))
+    #         ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
+    #                     cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
 
-        print("SVM Acc.", acc)
+    #     print("SVM Acc.", acc)
 
-        #### MLP Classifier ####
-        pred, acc = mlp_classify(self.emb_x, self.emb_y, True)
+    #     #### MLP Classifier ####
+    #     pred, acc = mlp_classify(self.emb_x, self.emb_y, True)
 
-        if plot:
-            pca = PCA(n_components=2, random_state=123)
-            x = pca.fit_transform(self.emb_x)
+    #     if plot:
+    #         pca = PCA(n_components=2, random_state=123)
+    #         x = pca.fit_transform(self.emb_x)
 
-            _, ax = plt.subplots(figsize=(5,5))
-            ax.set_title(f"MLP (Sklearn) - Classifier (Avg. accuracy: {acc})")
-            ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
-                        cmap=sns.color_palette("Spectral", as_cmap=True))
-            ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
-                        cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
+    #         _, ax = plt.subplots(figsize=(5,5))
+    #         ax.set_title(f"MLP (Sklearn) - Classifier (Avg. accuracy: {acc})")
+    #         ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
+    #                     cmap=sns.color_palette("Spectral", as_cmap=True))
+    #         ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
+    #                     cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
 
-        print("MLP Acc.", acc)
+    #     print("MLP Acc.", acc)
 
-        #### Random Forest Classifier ####
-        pred, acc = randomforest_classify(self.emb_x, self.emb_y, True)
+    #     #### Random Forest Classifier ####
+    #     pred, acc = randomforest_classify(self.emb_x, self.emb_y, True)
 
-        if plot:
-            pca = PCA(n_components=2, random_state=123)
-            x = pca.fit_transform(self.emb_x)
+    #     if plot:
+    #         pca = PCA(n_components=2, random_state=123)
+    #         x = pca.fit_transform(self.emb_x)
 
-            _, ax = plt.subplots(figsize=(5,5))
-            ax.set_title(f"Random Forest - Classifier (Avg. accuracy: {acc})")
-            ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
-                        cmap=sns.color_palette("Spectral", as_cmap=True))
-            ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
-                        cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
+    #         _, ax = plt.subplots(figsize=(5,5))
+    #         ax.set_title(f"Random Forest - Classifier (Avg. accuracy: {acc})")
+    #         ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
+    #                     cmap=sns.color_palette("Spectral", as_cmap=True))
+    #         ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
+    #                     cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
 
-        print("Random Forest Acc.", acc)
+    #     print("Random Forest Acc.", acc)

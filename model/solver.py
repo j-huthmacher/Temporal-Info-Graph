@@ -13,7 +13,7 @@ from tqdm import tqdm, trange
 import numpy as np
 
 # pylint: disable=import-error
-from visualization import create_gif, class_contour
+from visualization import create_gif, plot_emb_pred
 from data import KINECT_ADJACENCY
 from model.loss import jensen_shannon_mi
 

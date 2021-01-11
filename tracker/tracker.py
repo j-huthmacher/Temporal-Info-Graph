@@ -361,12 +361,14 @@ class Tracker(object):
                     "data": {
                         "MLP Top-1 Acc.": np.array(self.solver.train_metrics)[:, 0],
                         "MLP Top-5 Acc.": np.array(self.solver.train_metrics)[:, 1],
-                        "MLP Val Top-1 Acc.": np.array(self.solver.val_metrics)[:, 0],
-                        "MLP Val Top-5 Acc.": np.array(self.solver.val_metrics)[:, 1],
                     },
                     "n_epochs": self.solver.train_cfg["n_epochs"]
                 }
             }
+
+            if hasattr(self.solver, "val_metrics") and len(self.solver.val_metrics) != 0:
+                args["metric_cfg"]["data"]["MLP Val Top-1 Acc."] = np.array(self.solver.val_metrics)[:, 0]
+                args["metric_cfg"]["data"]["MLP Val Top-5 Acc."] = np.array(self.solver.val_metrics)[:, 1]
 
             #### Plot embeddings with loss/metric curve ####
             fig = plot_eval(**args, 

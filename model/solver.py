@@ -271,7 +271,7 @@ class Solver():
 
                         self.val_batch_losses.append(torch.squeeze(loss).item())
 
-                    if not isinstance(self.yhat, tuple):
+                    if not isinstance(self.yhat, tuple) and len(self.val_loader) > 0:
                         self.val_metric = self.evaluate(self.val_pred, self.val_label)
                         self.val_metrics.append(self.val_metric)
                         self.val_pred = np.array([])

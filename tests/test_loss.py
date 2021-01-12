@@ -5,9 +5,32 @@
 import unittest
 
 import torch
+import numpy as np
 
 # pylint: disable=import-error
 from model import jensen_shannon_mi
+from model.solver import Solver
+
+class TestEvaluation(unittest.TestCase):
+    """ Test class for evaluation function.
+    """
+
+    def test_top_k(self):
+        """ Simple test to valiadte the top-k evaluation.
+        """
+        pred = np.array([
+            [2,3,5,1,4],
+            [1,2,3,4,5],
+            [2,4,1,5,3]
+        ])
+        labels = np.array([2,2,2])
+
+        solver = Solver(None, None)
+
+        top1, top5 = solver.evaluate(pred, labels)
+
+        self.assertEqual(top1, 2/3)
+        self.assertEqual(top5, 3/3)
 
 class TestLoss(unittest.TestCase):
     """ Test class for TIG loss function.

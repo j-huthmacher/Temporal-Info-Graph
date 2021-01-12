@@ -9,18 +9,20 @@ import os
 
 from pathlib import Path
 
+
 ##################
 # Shared Configs #
 ##################
 local_log = True
 
-
 ##################
 
-Path("logs/").mkdir(parents=True, exist_ok=True)
+path = "logs/"
 
-if not os.path.exists(f'logs/TIG_{datetime.now().date()}.log'):
-    with open(f'logs/TIG_{datetime.now().date()}.log', 'w+'):
+Path(path).mkdir(parents=True, exist_ok=True)
+
+if not os.path.exists(f'{path}TIG_{datetime.now().date()}.log'):
+    with open(f'{path}TIG_{datetime.now().date()}.log', 'w+'):
         pass
 
 log = logging.getLogger('TIG_Logger')
@@ -32,7 +34,7 @@ if not log.handlers:
     ch = logging.StreamHandler()
     ch.setLevel(logging.INFO)
 
-    fh = logging.FileHandler(f'logs/TIG_{datetime.now().date()}.log')
+    fh = logging.FileHandler(f'{path}TIG_{datetime.now().date()}.log')
     fh.setLevel(logging.INFO)
 
     # create formatter

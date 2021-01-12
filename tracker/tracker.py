@@ -9,6 +9,7 @@ from datetime import datetime
 import shutil
 import json
 import warnings
+from shutil import copyfile
 
 import torch
 import pymongo
@@ -23,7 +24,7 @@ from sacred.observers import MongoObserver
 from model import MLP, TemporalInfoGraph
 from model import get_negative_expectation as neg_exp
 from model import get_positive_expectation as pos_exp
-from config.config import log
+from config.config import log, formatter, logging
 from visualization import create_gif, plot_eval, plot_heatmaps
 from data import KINECT_ADJACENCY
 
@@ -121,6 +122,18 @@ class Tracker(object):
 
         self.local_path = f"./output/{self.date}_{ex_name}/" if local_path is None else local_path
         Path(self.local_path).mkdir(parents=True, exist_ok=True)
+
+        #### Adapt Logger ####
+        f_name = log.handlers[1].baseFilename
+        copyfile(f_name, f"{self.local_path}{f_name.split(os.sep)[-1]}")
+
+        fh = logging.FileHandler(f"{self.local_path}{f_name.split(os.sep)[-1]}")
+        fh.setLevel(logging.INFO)
+        fh.setFormatter(formatter)
+        log.addHandler(fh)
+
+        log.removeHandler(log.handlers[1])
+        log.addHandler(fh)
 
         self.save_nth = 100
 
@@ -221,24 +234,30 @@ class Tracker(object):
 
             #### Track statistical values of the loss ####
             f = Path(f"{self.local_path}loss.stats.samples.csv")
-            if f.is_file():
+            if not f.is_file():
                 f = open(f"{self.local_path}loss.stats.samples.csv", "a")
-                f.write("num_pos_samples,num_neg_samples,ratio\n")
-                f.write(f"{loss_fn.pos_samples.shape[1]/36},{loss_fn.neg_samples.shape[1]/36},\
-                          {(loss_fn.neg_samples.shape[1]/36) /loss_fn.num_graphs}\n")
+                f.write("num_pos_samples,num_neg_samples,ratio,num_graphs,num_nodes\n")
+                f.write(f"{loss_fn.pos_samples.numel()},")
+                f.write(f"{loss_fn.neg_samples.numel()},")
+                f.write(f"{(loss_fn.neg_samples.numel())/(loss_fn.pos_samples.numel() + loss_fn.neg_samples.numel())},")
+                f.write(f"{loss_fn.num_graphs},")
+                f.write(f"{loss_fn.num_nodes}\n")
             else:
                 f = open(f"{self.local_path}loss.stats.samples.csv", "a")
-                f.write(f"{loss_fn.pos_samples.shape[1]/36},{loss_fn.neg_samples.shape[1]/36},\
-                                        {(loss_fn.neg_samples.shape[1]/36) /loss_fn.num_graphs}\n")
+                f.write(f"{loss_fn.pos_samples.numel()},")
+                f.write(f"{loss_fn.neg_samples.numel()},")
+                f.write(f"{(loss_fn.neg_samples.numel())/(loss_fn.pos_samples.numel() + loss_fn.neg_samples.numel())},")
+                f.write(f"{loss_fn.num_graphs},")
+                f.write(f"{loss_fn.num_nodes}\n")
             f.close()
 
             f = Path(f"{self.local_path}loss.stats.expectations.csv")
-            if f.is_file():
+            if not f.is_file():
                 f = open(f"{self.local_path}loss.stats.expectations.csv", "a")
                 f.write("E_neg,E_pos,overall_loss\n")
                 f.write(f"{loss_fn.E_neg},{loss_fn.E_pos},{loss_fn.E_neg - loss_fn.E_pos}\n")
             else:
-                f = open(f"{self.local_path}loss.stats.samples.csv", "a")
+                f = open(f"{self.local_path}loss.stats.expectations.csv", "a")
                 f.write(f"{loss_fn.E_neg},{loss_fn.E_pos},{loss_fn.E_neg - loss_fn.E_pos}\n")
             f.close()
 
@@ -305,7 +324,7 @@ class Tracker(object):
                         },
                         "n_epochs": self.solver.train_cfg["n_epochs"],
                         "title": "Accuracy",
-                        "line_mode": max
+                        "line_mode": np.max
                     }
                 }
 

@@ -25,7 +25,7 @@ from model import MLP, TemporalInfoGraph
 from model import get_negative_expectation as neg_exp
 from model import get_positive_expectation as pos_exp
 from config.config import log, formatter, logging
-from visualization import create_gif, plot_eval, plot_heatmaps
+from visualization import create_gif, plot_eval, plot_heatmaps, plot_heatmap
 from data import KINECT_ADJACENCY
 
 #### "Global" Access to Tracker ####
@@ -281,6 +281,9 @@ class Tracker(object):
             #### Prediction ####
             # yhat_norm = F.sigmoid(loss_fn.discr_matr)
             yhat_norm = torch.sigmoid(loss_fn.discr_matr)
+
+            plot_heatmap(yhat_norm).savefig(path+f"/{self.solver.epoch}.sigmoid.batch{self.solver.batch}.png")
+
             yhat_norm[yhat_norm > 0.5] = 1
             yhat_norm[yhat_norm <= 0.5] = 0
 

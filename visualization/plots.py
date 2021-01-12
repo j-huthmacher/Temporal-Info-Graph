@@ -195,7 +195,7 @@ def plot_loss_metric(data: dict, ax: matplotlib.axes.Axes, n_epochs: int = None,
 
 
 def plot_heatmap(matrix: np.ndarray, xlabel: str = "", ylabel: str = "", ticks: tuple = None,
-                      cbar_title: str = "", im_args: dict = {}, ax = None):
+                 cbar_title: str = "", im_args: dict = {}, ax = None):
     """ Creates a single heatmap.
 
         Paramter:

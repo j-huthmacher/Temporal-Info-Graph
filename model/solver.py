@@ -94,9 +94,11 @@ class Solver():
 
         self.loss_fn = jensen_shannon_mi if loss_fn is None else loss_fn
 
-        self.train_loader = dataloader[0]
-        self.val_loader = dataloader[1] if len(dataloader) == 2 or len(dataloader) == 3 else None
-        self.test_loader = dataloader[2] if len(dataloader) == 3 else None
+        if dataloader is not None:
+            # Can be None for testing
+            self.train_loader = dataloader[0]
+            self.val_loader = dataloader[1] if len(dataloader) == 2 or len(dataloader) == 3 else None
+            self.test_loader = dataloader[2] if len(dataloader) == 3 else None
 
         # Object storage to track the performance
         self.train_losses = []

@@ -33,6 +33,8 @@ tracker = None
 
 # TODO: This should be part of the solver.
 acc = {}
+e_pos = {}
+e_neg = {}
 
 class Tracker(object):
     """ Tracker class to do organized and structured tracking.
@@ -282,7 +284,8 @@ class Tracker(object):
             # yhat_norm = F.sigmoid(loss_fn.discr_matr)
             yhat_norm = torch.sigmoid(loss_fn.discr_matr)
 
-            plot_heatmap(yhat_norm).savefig(path+f"/{self.solver.epoch}.sigmoid.batch{self.solver.batch}.png")
+            Path(self.local_path + "sigmoid/").mkdir(parents=True, exist_ok=True)
+            plot_heatmap(yhat_norm.detach().numpy()).savefig(self.local_path +f"sigmoid/{self.solver.epoch}.sigmoid.batch{self.solver.batch}.png")
 
             yhat_norm[yhat_norm > 0.5] = 1
             yhat_norm[yhat_norm <= 0.5] = 0
@@ -291,6 +294,14 @@ class Tracker(object):
                 acc[self.solver.batch] = [(yhat_norm == labels).sum() / torch.numel(labels)]
             else:
                 acc[self.solver.batch].append((yhat_norm == labels).sum() / torch.numel(labels))
+
+
+            if self.solver.batch not in e_pos:
+                e_pos[self.solver.batch] = [self.solver.loss_fn.E_pos]
+                e_neg[self.solver.batch] = [self.solver.loss_fn.E_neg]
+            else:
+                e_pos[self.solver.batch].append(self.solver.loss_fn.E_pos)
+                e_neg[self.solver.batch].append(self.solver.loss_fn.E_neg)
 
             #### Plot Discriminator values over time ####
             num_graphs = loss_fn.num_graphs
@@ -317,6 +328,10 @@ class Tracker(object):
                 "loss_cfg": {
                         "data": {
                             "TIG Train Loss (JSD MI)": self.solver.train_batch_losses[self.solver.batch::len(self.solver.train_loader)],
+                            r"$\mathbb{E}_{pos}$": e_pos[self.solver.batch],
+                            r"$\mathbb{E}_{neg}$": e_neg[self.solver.batch],
+                            r"$Loss (plain)$": np.array(e_neg[self.solver.batch]) - np.array(e_pos[self.solver.batch])
+
                         },
                         "n_epochs": self.solver.train_cfg["n_epochs"],
                         "title": "Loss"

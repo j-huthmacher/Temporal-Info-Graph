@@ -450,8 +450,11 @@ class Tracker(object):
         if isinstance(self.solver.model, TemporalInfoGraph) and self.track_decision:
             #### Track epoch for TIG Encoder ####
             with torch.no_grad():
+                device = self.model.device
+                self.model = self.model.cpu()
                 emb_x = np.array(list(np.array(self.solver.train_loader.dataset, dtype=object)[:, 0]))
                 emb_x = self.model(emb_x.transpose((0,3,2,1)), KINECT_ADJACENCY)[0]
+                self.model = self.model.to(device)
 
             emb_y = np.array(self.solver.train_loader.dataset, dtype=object)[:, 1]
 

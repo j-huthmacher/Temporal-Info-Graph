@@ -117,6 +117,104 @@ class Solver():
 
         self.epoch = 0
 
+    def train_step(self, batch_x, batch_y, encoder=None):
+        """ Train step function to reduce memory footprint.
+        """
+        # The train loader returns dim (batch_size, frames, nodes, features)
+        # TODO: Check if it is needed
+        try:
+            if isinstance(batch_x, torch.Tensor):
+                batch_x = batch_x.type("torch.FloatTensor").permute(0,3,2,1)
+            else:
+                batch_x = torch.tensor(batch_x, dtype=torch.long).permute(0,3,2,1)
+        except:  #pylint: disable=bare-except
+            # For testing MLP on iris
+            if not isinstance(batch_x, torch.Tensor):
+                batch_x = torch.tensor(batch_x, dtype=torch.float32)            
+                
+        self.optimizer.zero_grad()
+
+        if encoder is not None:
+            #### Downstream Task ####
+            self.yhat, _ = encoder.to(self.model.device)(batch_x, torch.tensor(KINECT_ADJACENCY))
+            self.yhat = self.model(self.yhat)
+        else:
+            #### TIG Prediction ####
+            self.yhat = self.model(batch_x, torch.tensor(KINECT_ADJACENCY))
+                
+        if isinstance(self.yhat, tuple):
+            loss = self.loss_fn(*self.yhat)
+        else:
+            if not isinstance(batch_y, torch.Tensor):
+                batch_y = torch.tensor(batch_y, dtype=torch.long).to(self.model.device)
+            else:
+                batch_y = batch_y.type("torch.LongTensor").to(self.model.device)
+
+            loss = self.loss_fn(self.yhat, batch_y)
+
+            #### EVALUATION DURING TRAINING ####
+            self.yhat_idx = torch.argsort(self.yhat, descending=True)
+            self.train_pred = np.vstack([self.train_pred, self.yhat_idx.detach().cpu().numpy()]) if self.train_pred.size else self.yhat_idx.detach().cpu().numpy()
+            self.train_label = np.append(self.train_label, batch_y.detach().cpu().numpy())
+
+        self.train_batch_losses.append(torch.squeeze(loss).item())
+        loss.backward()
+        if "gradient_clipping" in self.train_cfg and (type(self.train_cfg["gradient_clipping"]) == int or float):
+            clip_grad_norm_(self.model.parameters(), self.train_cfg["gradient_clipping"])
+        self.optimizer.step()
+
+    def val_step(self, batch_x, batch_y, encoder=None):
+        """ Validation step function to reduce memory footprint.
+        """
+        
+        # The train loader returns dim (batch_size, frames, nodes, features)
+        # TODO: Check if it is needed
+        try:
+            if isinstance(batch_x, torch.Tensor):
+                batch_x = batch_x.type("torch.FloatTensor").permute(0,3,2,1)
+            else:
+                batch_x = torch.tensor(batch_x, dtype=torch.float32).permute(0,3,2,1)
+        except:
+            # For testing MLP on iris
+            if not isinstance(batch_x, torch.Tensor):
+                batch_x = torch.tensor(batch_x, dtype=torch.float32)         
+                        
+        if encoder is not None:
+            #### Downstream Task ####
+            self.yhat, _ = encoder(batch_x, torch.tensor(KINECT_ADJACENCY))
+            self.yhat = self.model(self.yhat)
+        else:
+            #### TIG Prediction ####
+            self.yhat = self.model(batch_x, torch.tensor(KINECT_ADJACENCY))
+
+        if isinstance(self.yhat, tuple):
+            loss = self.loss_fn(*self.yhat)
+        else:
+            if not isinstance(batch_y, torch.Tensor):
+                batch_y = torch.tensor(batch_y, dtype=torch.float32).to(self.model.device)
+            else:
+                batch_y = batch_y.type("torch.LongTensor").to(self.model.device)
+
+            loss = self.loss_fn(self.yhat, batch_y)
+
+            #### EVALUATION DURING VALIDATION ####
+            self.yhat_idx = torch.argsort(self.yhat, descending=True)
+            self.val_pred = np.vstack([self.val_pred, self.yhat_idx.detach().cpu().numpy()]) if self.val_pred.size else self.yhat_idx.detach().cpu().numpy()
+            self.val_label = np.append(self.val_label, batch_y.detach().cpu().numpy())
+
+        self.val_batch_losses.append(torch.squeeze(loss).item())
+
+        if not isinstance(self.yhat, tuple) and len(self.val_loader) > 0:
+            self.val_metric = self.evaluate(self.val_pred, self.val_label)
+            self.val_metrics.append(self.val_metric)
+            self.val_pred = np.array([])
+            self.val_label = np.array([])
+
+        # if callable(track):
+        #     track("validation")
+
+        # # lr_scheduler.step()            
+
     def train(self, train_config: dict = None, track: object = None,
               optimizer: torch.optim.Optimizer = None, encoder: nn.Module = None):
         """ Training procedure.
@@ -165,50 +263,9 @@ class Solver():
             #### Training ####
             self.model.train()
             self.phase = "train"
-            for self.batch, (self.batch_x, self.batch_y) in enumerate(tqdm(self.train_loader, total=len(self.train_loader), leave=False,
+            for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.train_loader, total=len(self.train_loader), leave=False,
                                                                       disable=False, desc=f'Trai. Batch (Epoch: {self.epoch})')):
-                # The train loader returns dim (batch_size, frames, nodes, features)
-                # TODO: Check if it is needed
-                try:
-                    if isinstance(self.batch_x, torch.Tensor):
-                        self.batch_x = self.batch_x.type("torch.FloatTensor").permute(0,3,2,1)
-                    else:
-                        self.batch_x = torch.tensor(self.batch_x, dtype=torch.long).permute(0,3,2,1)
-                except:  #pylint: disable=bare-except
-                    # For testing MLP on iris
-                    if not isinstance(self.batch_x, torch.Tensor):
-                        self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32)            
-                
-                self.optimizer.zero_grad()
-
-                if encoder is not None:
-                    #### Downstream Task ####
-                    self.yhat, _ = encoder.to(self.model.device)(self.batch_x, torch.tensor(KINECT_ADJACENCY))
-                    self.yhat = self.model(self.yhat)
-                else:
-                    #### TIG Prediction ####
-                    self.yhat = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
-                
-                if isinstance(self.yhat, tuple):
-                    loss = self.loss_fn(*self.yhat)
-                else:
-                    if not isinstance(self.batch_y, torch.Tensor):
-                        self.batch_y = torch.tensor(self.batch_y, dtype=torch.long).to(self.model.device)
-                    else:
-                        self.batch_y = self.batch_y.type("torch.LongTensor").to(self.model.device)
-
-                    loss = self.loss_fn(self.yhat, self.batch_y)
-
-                    #### EVALUATION DURING TRAINING ####
-                    self.yhat_idx = torch.argsort(self.yhat, descending=True)
-                    self.train_pred = np.vstack([self.train_pred, self.yhat_idx.detach().cpu().numpy()]) if self.train_pred.size else self.yhat_idx.detach().cpu().numpy()
-                    self.train_label = np.append(self.train_label, self.batch_y.detach().cpu().numpy())
-
-                self.train_batch_losses.append(torch.squeeze(loss).item())
-                loss.backward()
-                if "gradient_clipping" in train_config and (type(train_config["gradient_clipping"]) == int or float):
-                    clip_grad_norm_(self.model.parameters(), train_config["gradient_clipping"])
-                self.optimizer.step()
+                self.train_step(batch_x, batch_y, encoder)
 
                 if callable(track):
                     track("loss")
@@ -228,61 +285,13 @@ class Solver():
                 with torch.no_grad():
                     self.val_pred = np.array([])
                     self.val_label = np.array([])
-
                     #### Validate ####
-                    self.model.eval()
-                    del self.batch_x
-                    del self.batch_y
-                    for self.batch, (self.batch_x, self.batch_y) in enumerate(tqdm(self.val_loader, disable=False, leave=False,
-                                                                              desc=f'Vali. Batch (Epoch: {self.epoch})')):
-                        # The train loader returns dim (batch_size, frames, nodes, features)
-                        # TODO: Check if it is needed
-                        try:
-                            if isinstance(self.batch_x, torch.Tensor):
-                                self.batch_x = self.batch_x.type("torch.FloatTensor").permute(0,3,2,1)
-                            else:
-                                self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32).permute(0,3,2,1)
-                        except:
-                            # For testing MLP on iris
-                            if not isinstance(self.batch_x, torch.Tensor):
-                                self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32)
-                            
-                        
-                        if encoder is not None:
-                            #### Downstream Task ####
-                            self.yhat, _ = encoder(self.batch_x, torch.tensor(KINECT_ADJACENCY))
-                            self.yhat = self.model(self.yhat)
-                        else:
-                            #### TIG Prediction ####
-                            self.yhat = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
+                    # self.model.eval()
+                    for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.val_loader, disable=False, leave=False,
+                                                                        desc=f'Vali. Batch (Epoch: {self.epoch})')):
+                        self.val_step(batch_x, batch_y)
 
-                        if isinstance(self.yhat, tuple):
-                            loss = self.loss_fn(*self.yhat)
-                        else:
-                            if not isinstance(self.batch_y, torch.Tensor):
-                                self.batch_y = torch.tensor(self.batch_y, dtype=torch.float32).to(self.model.device)
-                            else:
-                                self.batch_y = self.batch_y.type("torch.LongTensor").to(self.model.device)
-
-                            loss = self.loss_fn(self.yhat, self.batch_y)
-
-                            #### EVALUATION DURING VALIDATION ####
-                            self.yhat_idx = torch.argsort(self.yhat, descending=True)
-                            self.val_pred = np.vstack([self.val_pred, self.yhat_idx.detach().cpu().numpy()]) if self.val_pred.size else self.yhat_idx.detach().cpu().numpy()
-                            self.val_label = np.append(self.val_label, self.batch_y.detach().cpu().numpy())
-
-                        self.val_batch_losses.append(torch.squeeze(loss).item())
-
-                    if not isinstance(self.yhat, tuple) and len(self.val_loader) > 0:
-                        self.val_metric = self.evaluate(self.val_pred, self.val_label)
-                        self.val_metrics.append(self.val_metric)
-                        self.val_pred = np.array([])
-                        self.val_label = np.array([])
-
-                        # if callable(track):
-                        #     track("validation")
-
-            # # lr_scheduler.step()            
+                    
                 self.val_losses.append(np.mean(self.val_batch_losses) if len(self.val_batch_losses) > 0 else 0)
                 self.val_batch_losses = []
             
@@ -321,23 +330,23 @@ class Solver():
 
             #### Test ####
             self.model.eval()
-            for self.batch, (self.batch_x, self.batch_y) in enumerate(tqdm(self.test_loader, disable=False, leave=False,
+            for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.test_loader, disable=False, leave=False,
                                                                       desc=f'Test. Batch (Epoch: {self.epoch})')):
                 # The train loader returns dim (batch_size, frames, nodes, features)
                 try:
-                    if isinstance(self.batch_x, torch.Tensor):
-                        self.batch_x = self.batch_x.type("torch.FloatTensor").permute(0,3,2,1)
+                    if isinstance(batch_x, torch.Tensor):
+                        batch_x = batch_x.type("torch.FloatTensor").permute(0,3,2,1)
                     else:
-                        self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32).permute(0,3,2,1)
+                        batch_x = torch.tensor(batch_x, dtype=torch.float32).permute(0,3,2,1)
                 except:
                     # For testing MLP on iris
-                    self.batch_x = torch.tensor(self.batch_x, dtype=torch.float32)
+                    batch_x = torch.tensor(batch_x, dtype=torch.float32)
 
                 if encoder is not None:
-                    self.yhat, _ = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
+                    self.yhat, _ = self.model(batch_x, torch.tensor(KINECT_ADJACENCY))
                     self.yhat = self.model(self.yhat)
                 else:
-                    self.yhat = self.model(self.batch_x, torch.tensor(KINECT_ADJACENCY))
+                    self.yhat = self.model(batch_x, torch.tensor(KINECT_ADJACENCY))
 
                 if isinstance(self.yhat, tuple):
                     # loss = self.loss_fn(*self.yhat)
@@ -347,7 +356,7 @@ class Solver():
                     self.yhat_idx = torch.argsort(self.yhat, descending=True)
 
                     self.predictions = np.vstack([self.predictions, self.yhat_idx.detach().cpu().numpy()]) if self.predictions.size else self.yhat_idx.detach().cpu().numpy()
-                    self.labels = np.append(self.labels, self.batch_y.detach().cpu().numpy())
+                    self.labels = np.append(self.labels, batch_y.detach().cpu().numpy())
 
             self.metric = self.evaluate(self.predictions, self.labels)
 

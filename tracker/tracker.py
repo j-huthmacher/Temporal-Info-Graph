@@ -10,6 +10,8 @@ import shutil
 import json
 import warnings
 from shutil import copyfile
+import sys
+import psutil
 
 import torch
 import pymongo
@@ -35,6 +37,8 @@ tracker = None
 acc = {}
 e_pos = {}
 e_neg = {}
+mem_used = []
+gpu_mem_used = []
 
 class Tracker(object):
     """ Tracker class to do organized and structured tracking.
@@ -231,6 +235,24 @@ class Tracker(object):
     def track_loss(self):
         """ Function to track the loss calculation.
         """
+        #### Check Memory Consumption ####
+        mem = psutil.virtual_memory()
+        mem_used.append(mem.used/1024**3)
+
+        fig, ax = plt.subplots(1,2, figsize=(10,4))
+        ax[0].plot(mem_used)
+        ax[0].set_ylabel("GB")
+        ax[0].set_title("Memory Usage")
+
+        mem = torch.cuda.memory_stats()["allocated_bytes.all.current"]
+        gpu_mem_used.append(mem/1024**3)
+        
+        ax[1].plot(gpu_mem_used)
+        ax[1].set_ylabel("GB")
+        ax[1].set_title("GPU Memory Usage")
+
+        fig.savefig(self.local_path+"MEM_USAGE.png")
+
         if isinstance(self.solver.model, TemporalInfoGraph):
             loss_fn = self.solver.loss_fn
 
@@ -556,7 +578,17 @@ class Tracker(object):
         def inner(cfg, encoder=None):
             # Extract solver
             # pylint: disable=attribute-defined-outside-init
-            self.solver = train.__self__            
+            self.solver = train.__self__         
+            
+            #### Pre Training ####
+            cfg["train_size"] = sys.getsizeof(self.solver.train_loader.dataset) / 1024**3
+            cfg["val_size"] = sys.getsizeof(self.solver.val_loader.dataset) / 1024**3
+
+            Path(self.local_path).mkdir(parents=True, exist_ok=True)
+
+            with open(f'{self.local_path}/config.json', 'w') as fp:
+                json.dump(cfg,fp)
+
             train(cfg, track = self.track, encoder=encoder)
 
             #### After the training is done ####

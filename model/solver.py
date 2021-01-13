@@ -289,7 +289,7 @@ class Solver():
                     # self.model.eval()
                     for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.val_loader, disable=False, leave=False,
                                                                         desc=f'Vali. Batch (Epoch: {self.epoch})')):
-                        self.val_step(batch_x, batch_y)
+                        self.val_step(batch_x, batch_y, encoder)
 
                     
                 self.val_losses.append(np.mean(self.val_batch_losses) if len(self.val_batch_losses) > 0 else 0)

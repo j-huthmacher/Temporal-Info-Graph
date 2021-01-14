@@ -157,6 +157,10 @@ class Solver():
             self.train_pred = np.vstack([self.train_pred, self.yhat_idx.detach().cpu().numpy()]) if self.train_pred.size else self.yhat_idx.detach().cpu().numpy()
             self.train_label = np.append(self.train_label, batch_y.detach().cpu().numpy())
 
+        if loss.isnan():
+            # Loss can be nan when the batch only contains a single sample!
+            return
+        
         self.train_batch_losses.append(torch.squeeze(loss).item())
         loss.backward()
         if "gradient_clipping" in self.train_cfg and (type(self.train_cfg["gradient_clipping"]) == int or float):
@@ -202,13 +206,11 @@ class Solver():
             self.val_pred = np.vstack([self.val_pred, self.yhat_idx.detach().cpu().numpy()]) if self.val_pred.size else self.yhat_idx.detach().cpu().numpy()
             self.val_label = np.append(self.val_label, batch_y.detach().cpu().numpy())
 
+        if loss.isnan():
+            # Loss can be nan when the batch only contains a single sample!
+            return
         self.val_batch_losses.append(torch.squeeze(loss).item())
 
-        if not isinstance(self.yhat, tuple) and len(self.val_loader) > 0:
-            self.val_metric = self.evaluate(self.val_pred, self.val_label)
-            self.val_metrics.append(self.val_metric)
-            self.val_pred = np.array([])
-            self.val_label = np.array([])
 
         # if callable(track):
         #     track("validation")
@@ -267,7 +269,7 @@ class Solver():
                                                                       disable=False, desc=f'Trai. Batch (Epoch: {self.epoch})')):
                 self.train_step(batch_x, batch_y, encoder)
 
-                if callable(track):
+                if encoder is None and callable(track):
                     track("loss")
 
                 # if callable(track):
@@ -290,10 +292,16 @@ class Solver():
                     for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.val_loader, disable=False, leave=False,
                                                                         desc=f'Vali. Batch (Epoch: {self.epoch})')):
                         self.val_step(batch_x, batch_y, encoder)
-
                     
-                self.val_losses.append(np.mean(self.val_batch_losses) if len(self.val_batch_losses) > 0 else 0)
-                self.val_batch_losses = []
+                    if not isinstance(self.yhat, tuple) and len(self.val_loader) > 0:
+                        self.val_metric = self.evaluate(self.val_pred, self.val_label)
+                        self.val_metrics.append(self.val_metric)
+                        self.val_pred = np.array([])
+                        self.val_label = np.array([])
+
+                    # TODO: CHeck this
+                    self.val_losses.append(np.mean(self.val_batch_losses) if len(self.val_batch_losses) > 0 else 0)
+                    self.val_batch_losses = []
             
             idx = self.epoch * len(self.train_loader)
             self.train_losses.append(np.mean(self.train_batch_losses[idx:idx+len(self.train_loader)]) if len(self.train_batch_losses) > 0 else 0)

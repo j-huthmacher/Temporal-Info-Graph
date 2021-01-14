@@ -233,9 +233,9 @@ class TemporalInfoGraph(nn.Module):
         self.dim_in = dim_in 
 
         self.tempLayer1 = TemporalConvolution(c_in=self.c_in, c_out=self.c_out, kernel=self.tempKernel)
-        k2 = max(1, self.tempLayer1.convShape(dim_in)[1])
+        # k2 = max(1, self.tempLayer1.convShape(dim_in)[1])
         self.specLayer1 = SpectralConvolution(c_in=self.c_out, c_out=self.spec_out)
-        self.tempLayer2 = TemporalConvolution(c_in=self.spec_out, c_out = self.out, kernel = k2)
+        self.tempLayer2 = TemporalConvolution(c_in=self.spec_out, c_out=self.out, kernel=self.tempKernel)
 
         #### REGULARIZATION ####
         self.bn = nn.BatchNorm2d(self.c_in) if batch_norm else None
@@ -302,7 +302,8 @@ class TemporalInfoGraph(nn.Module):
         H.permute(1,0,2,3)[:, pad_idx[:, :, (num_frames-out_time):]] = 0
 
         H1 = self.specLayer1(H, A) # Returns: (batch, nodes, time, features)
-        Z = self.tempLayer2(H1.permute(0, 3, 1, 2)) # Expects: (batch, features, nodes, time)
+        Z = self.tempLayer2(H1.permute(0, 3, 1, 2)) # Expects: (batch, features, nodes, time), Return: (batch, features, time, nodes)
+        Z = Z.mean(dim=2)
         Z = Z if self.activation is None else self.activation(Z)
 
         # Mean readout: Average each feature over all nodes --> dimension (features, 1)

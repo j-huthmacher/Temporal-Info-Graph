@@ -239,20 +239,48 @@ class Tracker(object):
         mem = psutil.virtual_memory()
         mem_used.append(mem.used/1024**3)
 
-        fig, ax = plt.subplots(1,2, figsize=(10,4))
+        fig, ax = plt.subplots(2, 1, figsize=(15, 6))
         ax[0].plot(mem_used)
+
+        ax[0].axhline(mem.total/1024**3, ax[0].get_xlim()[0], ax[0].get_xlim()[1], linestyle="--", linewidth=1)
+
+        if len(mem_used) > len(self.solver.train_loader):
+            x = np.arange(len(self.solver.train_loader), len(mem_used), len(self.solver.train_loader))
+            ymax = [ax[0].get_ylim()[1]] * len(x)
+            ymin = [ax[0].get_ylim()[0]] * len(x)
+            if len(x) > 20:
+                x = x[::3]
+                ymax = ymax[::3]
+                ymin = ymin[::3]
+            ax[0].vlines(x, ymin, ymax, label="epoch", linestyles=":", linewidth=1)
+
         ax[0].set_ylabel("GB")
         ax[0].set_title("Memory Usage")
-
+        
+        #### Plot GPU Memory ####
         mem = torch.cuda.memory_stats()["allocated_bytes.all.current"]
+        total_mem_gpu = torch.cuda.get_device_properties(0).total_memory/1024**3
         gpu_mem_used.append(mem/1024**3)
 
         ax[1].plot(gpu_mem_used)
+
+        ax[1].axhline(total_mem_gpu, ax[1].get_xlim()[0], ax[1].get_xlim()[1], linestyle="--", linewidth=1)
+
+        if len(gpu_mem_used) > len(self.solver.train_loader):
+            x = np.arange(len(self.solver.train_loader), len(gpu_mem_used), len(self.solver.train_loader))
+            ymax = [ax[1].get_ylim()[1]] * len(x)
+            ymin = [ax[1].get_ylim()[0]] * len(x)
+            if len(x) > 20:
+                x = x[::3]
+                ymax = ymax[::3]
+                ymin = ymin[::3]
+            ax[1].vlines(x, ymin, ymax, label="epoch", linestyles=":", linewidth=1)
+
         ax[1].set_ylabel("GB")
         ax[1].set_title("GPU Memory Usage")
 
         fig.savefig(self.local_path+"MEM_USAGE.png")
-        plt.close()
+        plt.close('all')
 
         if isinstance(self.solver.model, TemporalInfoGraph):
             loss_fn = self.solver.loss_fn

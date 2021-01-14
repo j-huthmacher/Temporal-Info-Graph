@@ -246,12 +246,13 @@ class Tracker(object):
 
         mem = torch.cuda.memory_stats()["allocated_bytes.all.current"]
         gpu_mem_used.append(mem/1024**3)
-        
+
         ax[1].plot(gpu_mem_used)
         ax[1].set_ylabel("GB")
         ax[1].set_title("GPU Memory Usage")
 
         fig.savefig(self.local_path+"MEM_USAGE.png")
+        plt.close()
 
         if isinstance(self.solver.model, TemporalInfoGraph):
             loss_fn = self.solver.loss_fn
@@ -450,11 +451,11 @@ class Tracker(object):
         if isinstance(self.solver.model, TemporalInfoGraph) and self.track_decision:
             #### Track epoch for TIG Encoder ####
             with torch.no_grad():
-                device = self.model.device
-                self.model = self.model.cpu()
+                device = self.solver.model.device
+                self.solver.model = self.solver.model.cpu()
                 emb_x = np.array(list(np.array(self.solver.train_loader.dataset, dtype=object)[:, 0]))
-                emb_x = self.model(emb_x.transpose((0,3,2,1)), KINECT_ADJACENCY)[0]
-                self.model = self.model.to(device)
+                emb_x = self.solver.model(emb_x.transpose((0,3,2,1)), KINECT_ADJACENCY)[0]
+                self.solver.model = self.solver.model.to(device)
 
             emb_y = np.array(self.solver.train_loader.dataset, dtype=object)[:, 1]
 

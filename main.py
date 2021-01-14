@@ -67,6 +67,8 @@ if args.train:
             config = yaml.load(file, Loader=yaml.FullLoader)["standard"]
 
     #### Tracker Set Up ####
+    if "name" in config:
+        name += f"_{config['name']}"
     tracking = {"ex_name": name}
     if args.tracking == "remote":
         tracking = {

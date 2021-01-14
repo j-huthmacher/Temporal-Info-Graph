@@ -460,7 +460,9 @@ class Tracker(object):
         """
         #### Plots & Animations ####
         if isinstance(self.solver.model, MLP) and self.track_decision:
-            if "classification" in self.cfg["visuals"]:
+            if ("classification" in self.cfg["visuals"] or 
+                ("classification.last" in self.cfg["visuals"] and
+                 self.solver.epoch == self.solver.train_cfg["n_epochs"] - 1)):
                 #### Track epoch for MLP ####
                 emb_x = np.array(
                     self.solver.train_loader.dataset, dtype=object)[:, 0]

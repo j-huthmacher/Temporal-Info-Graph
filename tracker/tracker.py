@@ -252,6 +252,10 @@ class Tracker(object):
                 x = x[::3]
                 ymax = ymax[::3]
                 ymin = ymin[::3]
+            elif len(x) > 500:
+                x = x[:500:3]
+                ymax = ymax[:500:3]
+                ymin = ymin[:500:3]
             ax[0].vlines(x, ymin, ymax, label="epoch", linestyles=":", linewidth=1)
 
         ax[0].set_ylabel("GB")
@@ -274,6 +278,10 @@ class Tracker(object):
                 x = x[::3]
                 ymax = ymax[::3]
                 ymin = ymin[::3]
+            elif len(x) > 500:
+                x = x[:500:3]
+                ymax = ymax[:500:3]
+                ymin = ymin[:500:3]
             ax[1].vlines(x, ymin, ymax, label="epoch", linestyles=":", linewidth=1)
 
         ax[1].set_ylabel("GB")

@@ -43,7 +43,7 @@ def create_gif(fig: Any, path: str):
         img, *imgs = [Image.open(f) for f in sorted(glob.glob(fig+"/*.png"), key=lambda x: int("".join(re.findall(r'\d+', x))))]
         img.save(fp=path, format='GIF', append_images=imgs,
                  save_all=True, duration=200, loop=0)
-        imgs[-1].save(path.replace(".gif", ".final.png"))
+        # imgs[-1].save(path.replace(".gif", ".final.png"))
     else:
         # fig is a matplot figure
         buf = io.BytesIO()
@@ -61,7 +61,7 @@ def create_gif(fig: Any, path: str):
 
         im.save(fp=path, format='GIF', append_images=images[path],
                 save_all=True, duration=200, loop=0)
-        fig.savefig(path.replace(".gif", ".final.png"), dpi=150)
+        # fig.savefig(path.replace(".gif", ".final.png"), dpi=150)
         # if not fill:
         #     images[path].clear()
 

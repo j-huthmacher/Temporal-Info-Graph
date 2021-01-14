@@ -11,9 +11,7 @@ import scipy.ndimage as ndimage
 
 import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib.ticker import FormatStrFormatter
-
-
+from matplotlib.ticker import FormatStrFormatter, MaxNLocator
 
 from matplotlib import rcParams
 rcParams.update({'figure.autolayout': True})
@@ -139,8 +137,9 @@ def plot_emb_pred(x: np.array, y, clf: torch.nn.Module, precision: float = 0.02,
         x = pca.fit_transform(x)
 
         #### Plot Predicted Class ####
-        ax.scatter(x[:, 0], x[:, 1], cmap=sns.color_palette("Spectral", as_cmap=True),
-                   edgecolors=sns.color_palette("Spectral", as_cmap=True)(np.argmax(yhat, axis=1).astype(int)),
+        cmap = sns.color_palette("Spectral", as_cmap=True)
+        ax.scatter(x[:, 0], x[:, 1], c=np.argmax(yhat, axis=1).astype(int),
+                   cmap=sns.color_palette("Spectral", as_cmap=True),
                    facecolors='none', s=80,  linewidth=2)
 
     ax.scatter(x[:, 0], x[:, 1], c=y.astype(int), cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
@@ -151,8 +150,8 @@ def plot_emb_pred(x: np.array, y, clf: torch.nn.Module, precision: float = 0.02,
         return fig
 
 
-def plot_loss_metric(data: dict, ax: matplotlib.axes.Axes, n_epochs: int = None, title: str = "",
-                     model_name: str = "TIG", line_mode: callable = np.min, n_batches: int = None):
+def plot_curve(data: dict, ax: matplotlib.axes.Axes = None, n_epochs: int = None, title: str = "",
+               model_name: str = "TIG", line_mode: callable = np.min, n_batches: int = None):
     """ Plot loss/metric.
 
         Parameters:
@@ -172,9 +171,10 @@ def plot_loss_metric(data: dict, ax: matplotlib.axes.Axes, n_epochs: int = None,
                 Possibilities: [np.min, np.max]
             n_batches: int
                 Number of batches. If provided it is used to determine the x-axis ticks.
-            
-
     """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10,3))
+
     for i, name in enumerate(data):
         l = data[name]
         if isinstance(l, list):
@@ -185,13 +185,16 @@ def plot_loss_metric(data: dict, ax: matplotlib.axes.Axes, n_epochs: int = None,
                    label='%.3f (%s)' % (line_mode(l), name))
         
         if n_epochs is not None:
-            ax.set_xlim(0, n_epochs if n_batches is None else (n_batches * n_epochs))
+            ax.set_xlim(0, n_epochs - 1 if n_batches is None else (n_batches * n_epochs) - 1)
+            ax.get_xaxis().set_major_locator(MaxNLocator(integer=True))
 
         ax.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
 
     ax.set_title(f"{model_name} {title}")
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2),
               fancybox=True, shadow=True, ncol=2)
+    
+    return ax.figure
 
 
 def plot_heatmap(matrix: np.ndarray, xlabel: str = "", ylabel: str = "", ticks: tuple = None,
@@ -248,6 +251,26 @@ def plot_heatmap(matrix: np.ndarray, xlabel: str = "", ylabel: str = "", ticks: 
 
 
 #### Consolidated Plots ####
+def plot_loss_metric(loss_cfg: dict, metric_cfg: dict, title="", model_name = "TIG"):
+    """
+    """
+    fig = plt.figure(figsize=(10, 6))
+    gs = fig.add_gridspec(2, 1)
+
+    #### Loss Curve ####
+    if loss_cfg is not None:
+        ax = fig.add_subplot(gs[0])
+        loss_cfg["ax"] = ax
+        plot_curve(**loss_cfg)
+
+    #### Accuracy Curve ####
+    if metric_cfg is not None:
+        ax = fig.add_subplot(gs[1])
+        metric_cfg["ax"] = ax
+        plot_curve(**metric_cfg)
+    
+    return fig
+
 def plot_eval_folder(folder: str, title: str = "", precision: float = 0.02):
     """ Visual evaluation of an experiment (incl. embeddings, loss, metrics).
         Creates easily an evaluation plot.
@@ -305,7 +328,7 @@ def plot_eval_folder(folder: str, title: str = "", precision: float = 0.02):
         "title": "Loss",
         "ax": ax
     }
-    plot_loss_metric(**args)
+    plot_curve(**args)
 
     #### Accuracy Curve ####
     ax = fig.add_subplot(gs[3, 1])
@@ -318,7 +341,7 @@ def plot_eval_folder(folder: str, title: str = "", precision: float = 0.02):
         "ax": ax,
         "line_mode": np.max
     }
-    plot_loss_metric(**args)
+    plot_curve(**args)
 
 def plot_eval(emb_cfg: dict, loss_cfg: dict, metric_cfg: dict = None, title="", model_name = "TIG"):
     """ 'Visual evaluation' plot. Consists of several plots to evaluate a model.
@@ -350,13 +373,13 @@ def plot_eval(emb_cfg: dict, loss_cfg: dict, metric_cfg: dict = None, title="", 
     #### Loss Curve ####
     ax = fig.add_subplot(gs[0, 1:])
     loss_cfg["ax"] = ax
-    plot_loss_metric(**loss_cfg)
+    plot_curve(**loss_cfg)
 
     #### Accuracy Curve ####
     if metric_cfg is not None:
         ax = fig.add_subplot(gs[1, 1:])
         metric_cfg["ax"] = ax
-        plot_loss_metric(**metric_cfg)
+        plot_curve(**metric_cfg)
 
     fig.tight_layout()
 
@@ -424,11 +447,11 @@ def plot_heatmaps(matrices: list, xlabels: list = [], ylabels: list = [],
     if loss_cfg is not None:
         loss_cfg["ax"] = ax[0,2]
         ax[1,2].set_axis_off()
-        plot_loss_metric(**loss_cfg)
+        plot_curve(**loss_cfg)
     
     if metric_cfg is not None:
         metric_cfg["ax"] = ax[1,2]
         ax[1,2].set_axis_on()
-        plot_loss_metric(**metric_cfg)
+        plot_curve(**metric_cfg)
     
     return fig

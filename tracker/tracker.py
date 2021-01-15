@@ -210,6 +210,12 @@ class Tracker(object):
             self.cfg = cfg
             self.cfg["start_time"] = datetime.now().strftime(
                 "%d.%m.%Y %H:%M:%S")
+
+            Path(self.local_path).mkdir(parents=True, exist_ok=True)
+
+            with open(f'{self.local_path}/config.json', 'w') as fp:
+                json.dump(self.cfg, fp)
+            
             if self.ex is not None:
                 self.ex.main(mode(self, cfg))
                 self.ex.run()

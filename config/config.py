@@ -18,7 +18,6 @@ local_log = True
 ##################
 
 path = "logs/"
-
 Path(path).mkdir(parents=True, exist_ok=True)
 
 if not os.path.exists(f'{path}TIG_{datetime.now().date()}.log'):
@@ -37,10 +36,9 @@ if not log.handlers:
     fh = logging.FileHandler(f'{path}TIG_{datetime.now().date()}.log')
     fh.setLevel(logging.INFO)
 
-    # create formatter
-
+        # create formatter
     formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s',
-                                datefmt='%d.%m.%Y %H:%M:%S')
+                                     datefmt='%d.%m.%Y %H:%M:%S')
 
     # add formatter to ch
     ch.setFormatter(formatter)
@@ -50,13 +48,48 @@ if not log.handlers:
     log.addHandler(ch)
     log.addHandler(fh)
 
-    log.propagate = False
+def create_logger(fpath, name = 'TIG_Logger', suffix = ""):
+    """
+    """
+    Path(fpath).mkdir(parents=True, exist_ok=True)
 
-# Custom logger configuration.
-# log.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
-#                 datefmt='%d.%m.%Y %H:%M:%S',
-#                 level=log.INFO,
-#                 handlers=[
-#                     log.FileHandler(f'logs/DH_{datetime.now().date()}.log'),
-#                     log.StreamHandler()
-#                 ])
+    if not os.path.exists(f'{fpath}{suffix}TIG_{datetime.now().date()}.log'):
+        with open(f'{fpath}{suffix}TIG_{datetime.now().date()}.log', 'w+'):
+            pass
+
+    log_ = logging.getLogger(name)
+
+    if not log_.handlers:
+        log_.setLevel(logging.INFO)
+
+        # create console handler and set level to debug
+        ch_ = logging.StreamHandler()
+        ch_.setLevel(logging.INFO)
+
+        fh_ = logging.FileHandler(f'{fpath}{suffix}TIG_{datetime.now().date()}.log')
+        ch_.setLevel(logging.INFO)
+
+        # create formatter
+
+        formatter_ = logging.Formatter('%(asctime)s %(levelname)s: %(message)s',
+                                     datefmt='%d.%m.%Y %H:%M:%S')
+
+        # add formatter to ch
+        ch_.setFormatter(formatter_)
+        fh_.setFormatter(formatter_)
+
+        # add ch to logger
+        log_.addHandler(ch_)
+        log_.addHandler(fh_)
+
+        # log.propagate = False
+
+    return log_
+    # Custom logger configuration.
+    # log.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
+    #                 datefmt='%d.%m.%Y %H:%M:%S',
+    #                 level=log.INFO,
+    #                 handlers=[
+    #                     log.FileHandler(f'logs/DH_{datetime.now().date()}.log'),
+    #                     log.StreamHandler()
+    #                 ])

@@ -25,12 +25,13 @@ from config.config import log
 class TIGDataset(Dataset):
     """ TIG data set for data that is too large for the memory.
     """
-    def __init__(self, name: str, path: str = "./dataset/"):
+    def __init__(self, name: str, path: str = "./dataset/",
+                 s_files: [str] = None, verbose: bool = False):
         """ Initialization of the TIG DataSet
 
             Paramters:
-                name: str 
-                    Name of the data set. 
+                name: str
+                    Name of the data set.
                     Available: {'kinetic_skeleton', 'kinetic_skeleton_5000'}, where
                     'kinetic_skeleton_5000' is a subset with 5000 samples.
                 path: str
@@ -38,16 +39,23 @@ class TIGDataset(Dataset):
         """
         super().__init__()
 
+        self.verbose = verbose
+        self.path = f"{path}{name}/"
         self.name = name
         self.file_name = name + ".npz"
-        self.path = f"{path}{name}/"
 
-        self.x = []
-        self.y = []       
+        if s_files is not None:
+            files = []
+            for folder in s_files:
+                files.extend([join(folder, f) for f in listdir(folder)])
+            self.process(files)
+        else:           
+            self.x = []
+            self.y = []
 
-        # Download and extract data if not exists.
-        self.load_data()
-    
+            # Download and extract data if not exists.
+            self.load_data()
+
     def load_data(self):
         """ Load the data into memory.
             If the data doesn't exist the data is downloaded and extracted.
@@ -83,7 +91,7 @@ class TIGDataset(Dataset):
         data = np.load(self.path +  self.file_name, allow_pickle=True)
         self.x = data["x"]
         self.y = data["y"]
-    
+
     def split_data(self, x, y, train_ratio=0.8, val_ratio=0.1, mode=2, lim=None):
         """
         """
@@ -193,14 +201,14 @@ class TIGDataset(Dataset):
             sets.append(list(zip(self.x[class_idx][val_threshold:lim], self.y[class_idx][val_threshold:lim])))
 
         return sets[0] if mode <= 1 else sets
-    
+
     def __len__(self):
         return len(self.y)
 
     def __getitem__(self, idx):
         return (self.x[idx], self.y[idx])
-        
-    def process(self):
+
+    def process(self, file_paths: [str] = None):
         """ Depricated for now!
         """    
 
@@ -209,23 +217,30 @@ class TIGDataset(Dataset):
         file_num = 0  # Output file index.
         start = 0 # Not used yet
 
-        length = len(self.raw_paths)
+        if file_paths is None:
+            file_paths = self.raw_paths
+
+        length = len(file_paths)
         # start = length // 2
 
         # Iterate over all "raw" files
-        for i, json_file in enumerate(tqdm(self.raw_paths, disable=(not self.verbose),
-                                           desc=f"Files processed:")):
+        for i, json_file in enumerate(tqdm(file_paths, disable=(not self.verbose),
+                                           desc="Files processed:")):
                     
             try:
                 with open(json_file) as f:
                     data = json.load(f)
                     X = []
-                    data_list_y.append(data["label_index"])      
+                    data_list_y.append(data["label_index"])
+
                     # y = data["label_index"]
 
                     # fill data_numpy
-                    # Default dimension: (300, 18, 4). 4 because we consider 2 persons.
-                    X = np.zeros((self.num_frames, self.num_nodes, 4))
+                    # Default dimension: (300, 36, 2). 4 because we consider 2 persons.
+                    num_frames = 300
+                    num_features = 2
+                    num_nodes = 36
+                    X = np.zeros((num_frames, num_nodes, num_features)).astype(np.float32)
 
                     for f, frame in enumerate(data['data']):
                         frame["skeleton"].sort(key=lambda x: np.mean(x["score"]), reverse=True)
@@ -234,27 +249,40 @@ class TIGDataset(Dataset):
                             if s == 2:
                                 break  # Only consider the two skeletons with the highest average confidence
                             # TODO: Append along node axis! (36, 2)
-                            X[f, :, (s * 2)] = skeleton['pose'][0::2]
-                            X[f, :, (s * 2) + 1] = skeleton['pose'][1::2]
+                            idx_min = int(s * num_nodes/2)
+                            idx_max = int((s + 1) * num_nodes/2)
+
+                            X[f, idx_min:idx_max, 0] = skeleton['pose'][0::2]
+                            X[f, idx_min:idx_max, 1] = skeleton['pose'][1::2]
+
+                            #### Centralization ####
+                            X[f, :, :] -= 0.5
+
+                            idx = ((np.asarray(skeleton['score']) - 0.5) == 0)
+                            X[f, idx_min:idx_max, 0] = np.where(idx, 0, X[f, idx_min:idx_max, 0])
+                            X[f, idx_min:idx_max, 1] = np.where(idx, 0, X[f, idx_min:idx_max, 1])
+                            
+                            
 
                 # Each data point corresponds to a list of graphs.
-                # data_list.append([X, y])       
-                data_list_x.append(X)         
+                # data_list.append([X, y])
+                data_list_x.append(X.astype(np.float32))
 
-                if i == length // 2:
-                    np.savez(self.processed_dir + "/kinetic_skeleton_1", x=data_list_x, y = data_list_y)
-                    log.inf(f"File stored at {self.processed_dir + '/kinetic_skeleton_1.npz'}")
-                    data_list_y = []
-                    data_list_x = []
-                    break # TODO
+                # if i == length // 2:
+                #     np.savez(self.processed_dir + "/kinetic_skeleton_1", x=data_list_x, y = data_list_y)
+                #     log.inf(f"File stored at {self.processed_dir + '/kinetic_skeleton_1.npz'}")
+                #     data_list_y = []
+                #     data_list_x = []
+                #     break # TODO
 
             except Exception as e:
                 log.error(e, json_file)
 
         # Output dim (num_samples, 2), per output dim x on pos 0 and y on pos 1
         # X dim: (num_frames, joints/nodes, features), where features is 4
-        np.savez(self.processed_dir + "/kinetic_skeleton_2", x=data_list_x, y = data_list_y)
-        log.inf(f"File stored at {self.processed_dir + '/kinetic_skeleton_2.npz'}")
+        data_list_y = np.asarray(data_list_y).astype(np.float32)
+        np.savez(f"{self.path}{self.name}", x=data_list_x, y = data_list_y)
+        log.info(f"File stored at {self.path}{self.name}.npz")
 
 
 ####################

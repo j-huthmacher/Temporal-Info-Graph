@@ -122,7 +122,8 @@ class SpectralConvolution(nn.Module):
     """
 
     def __init__(self, c_in: int , c_out: int = 2, kernel: Any = 1,
-                 method: str = "gcn", weights: Any = None, activation: str = "leakyReLU"):
+                 method: str = "gcn", weights: Any = None, activation: str = "leakyReLU",
+                 A: torch.Tensor = None):
         """ Initialization of the spectral convolution layer.
 
             Parameters:
@@ -141,6 +142,8 @@ class SpectralConvolution(nn.Module):
                     Determines which activation function is used. Options: ['leakyReLU', 'ReLU']
         """
         super().__init__()
+
+        self.A = A
 
         self.c_in = c_in
         self.c_out = c_out
@@ -173,7 +176,7 @@ class SpectralConvolution(nn.Module):
     def is_cuda(self):
         return next(self.parameters()).is_cuda
 
-    def forward(self, X: torch.Tensor, A: torch.Tensor):
+    def forward(self, X: torch.Tensor, A: torch.Tensor = None):
         """ Forward pass of the spectral convolution layer.
 
             Parameters:
@@ -185,11 +188,18 @@ class SpectralConvolution(nn.Module):
                 torch.Tensor: Convoluted feature tensor (feature map) of
                 dimension (batch, nodes, time, features)
         """
+        A = self.A if A is None else A
+
+        if not isinstance(A, torch.Tensor):
+            A = torch.tensor(A, dtype=torch.float32)
+        A = A.type('torch.FloatTensor').to(self.device)
+
         # Adjacency matrix multiplication in time!
         # TODO: Adapt the indices to omit the permutation before and after.
         self.W = self.W.to(self.device)
         H = torch.einsum("ij,jklm->kilm", [A, X.permute(2, 0, 3, 1)]).to(self.device)
         H = torch.matmul(H, self.W)
+        H = H.permute(0, 3, 1, 2)
 
         return H if self.activation is None else self.activation(H)
 
@@ -198,8 +208,9 @@ class TemporalInfoGraph(nn.Module):
     """ Implementation of the temporal info graph model.
     """
 
-    def __init__(self, dim_in: tuple, c_in: int, c_out: int = 2, spec_out: int = 2, out: int = 2,
-                 tempKernel: Any = 1, activation: str = "leakyReLU", batch_norm: bool = True):
+    def __init__(self, dim_in: tuple = None, architecture: [tuple] = [(2, 32, 32, 32, 32)],
+                 activation: str = "leakyReLU", batch_norm: bool = True,
+                 A: torch.Tensor = None):
         """ Initilization of the TIG model.
 
             Parameter:
@@ -208,6 +219,8 @@ class TemporalInfoGraph(nn.Module):
                     In the temporal graph set up this would corresponds to (nodes, features).
                     Those values are needed to calculate the kernel for the last temporal layer,
                     which covers the whole input to finally reduce the data to a "single timestamp".
+                architecture: [tuple]
+                    [(c_in, c_out, spec_out, out, kernel)]
                 c_in: int
                     Input channels of the data, i.e. features.
                 c_out: int
@@ -225,33 +238,33 @@ class TemporalInfoGraph(nn.Module):
         """
         super().__init__()
 
-        self.c_in = c_in
-        self.c_out = c_out
-        self.spec_out = spec_out
-        self.tempKernel = tempKernel
-        self.out = out
-        self.dim_in = dim_in 
+        #### Model Creation #####
 
-        self.tempLayer1 = TemporalConvolution(c_in=self.c_in, c_out=self.c_out, kernel=self.tempKernel)
-        # k2 = max(1, self.tempLayer1.convShape(dim_in)[1])
-        self.specLayer1 = SpectralConvolution(c_in=self.c_out, c_out=self.spec_out)
-        self.tempLayer2 = TemporalConvolution(c_in=self.spec_out, c_out=self.out, kernel=self.tempKernel)
+        # self.c_in = c_in
+        # self.c_out = c_out
+        # self.spec_out = spec_out
+        # self.tempKernel = tempKernel
+        # self.out = out
+        # self.dim_in = dim_in 
 
-        #### REGULARIZATION ####
-        self.bn = nn.BatchNorm2d(self.c_in) if batch_norm else None
+        layers = []
+        
+        for (c_in, c_out, spec_out, out, kernel) in architecture:
+            #### REGULARIZATION ####
+            if batch_norm:
+                layers.append(nn.BatchNorm2d(c_in))
 
-        #### ACTIVATION #####
-        if activation == "leakyReLU":
-            self.activation = nn.LeakyReLU()
-        elif activation == "ReLU":
-            self.activation = nn.ReLU()
-        else:
-            self.activation = None        
+            layers.append(TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel))
+            layers.append(SpectralConvolution(c_in=c_out, c_out=spec_out, A=A))
+            layers.append(TemporalConvolution(c_in=spec_out, c_out=out, kernel=kernel))
 
-        #### TO DEVICE #####
-        self.tempLayer1 = self.tempLayer1.to(self.device)
-        self.specLayer1 = self.specLayer1.to(self.device)
-        self.tempLayer2 = self.tempLayer2.to(self.device)
+            #### ACTIVATION #####
+            if activation == "leakyReLU":
+                layers.append(nn.LeakyReLU())
+            elif activation == "ReLU":
+                layers.append(nn.ReLU())
+
+        self.model = nn.Sequential(*layers)
 
     @property
     def device(self):
@@ -280,31 +293,12 @@ class TemporalInfoGraph(nn.Module):
         """
         if not isinstance(X, torch.Tensor):
             X = torch.tensor(X, dtype=torch.float32)
-        if not isinstance(A, torch.Tensor):
-            A = torch.tensor(A, dtype=torch.float32)
-
+        
         # Features could be twice or more!
         X = X.type('torch.FloatTensor').to(self.device)
-        A = A.type('torch.FloatTensor').to(self.device)
 
-        if self.bn is not None:
-            X = self.bn(X)
-
-        H = self.tempLayer1(X) # Returns: (batch, out_features, nodes, time)
-
-        #### Masking Padding ####
-        # TODO: Enhance Masking + Unit Test
-        batch_size, _, num_nodes, num_frames = X.shape
-        _, out_feature, _, out_time = H.shape
-        pad_idx = torch.repeat_interleave((~X.bool()).all(dim=1).all(dim=1),
-                                          repeats=num_nodes, dim=0).view(batch_size, num_nodes, -1)
-        batch_size, _, num_nodes, num_frames = X.shape
-        H.permute(1,0,2,3)[:, pad_idx[:, :, (num_frames-out_time):]] = 0
-
-        H1 = self.specLayer1(H, A) # Returns: (batch, nodes, time, features)
-        Z = self.tempLayer2(H1.permute(0, 3, 1, 2)) # Expects: (batch, features, nodes, time), Return: (batch, features, time, nodes)
+        Z = self.model(X)
         Z = Z.mean(dim=2)
-        Z = Z if self.activation is None else self.activation(Z)
 
         # Mean readout: Average each feature over all nodes --> dimension (features, 1)
         # Average over dimension 2, dim 2 corresponds to the nodes

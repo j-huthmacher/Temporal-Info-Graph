@@ -12,6 +12,8 @@ import yaml
 #pylint: disable=import-error
 from tracker import Tracker
 from experiments import  experiment
+from config.config import log
+from data.tig_data_set import TIGDataset
 
 
 #### Set Up CLI ####
@@ -92,17 +94,17 @@ if args.train:
 
 
 elif args.prep_data:
-    pass
+    # pass
     # Prepare data 
-    # data_paths = [
-    #     "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics_train/",
-    #     "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics_val/"
-    # ]
+    data_paths = [
+        "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics_train/",
+        "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics_val/"
+    ]
 
-    # output = "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/"
+    output = "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/"
 
-    # log.info("Process data")
+    log.info("Process data")
 
-    # _ = TIGDataset(paths = data_paths, output=output, verbose=True)
+    _ = TIGDataset(name="kinetics-skeleton", s_files=data_paths, path=output, verbose=True)
 
-    # log.info("Data set processed")
+    log.info("Data set processed")

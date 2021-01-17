@@ -51,31 +51,34 @@ standard_stratified:
     n_epochs: 500
 
 standard_stratified2:
+  name: AvgPooling
   data:
     name: kinetic_skeleton_5000
     path: ./content/
   stratify:
     num: 2
-    lim: 20
+    lim: 5000
   loader:
-    batch_size: 32
+    batch_size: 4
   emb_tracking: True
   encoder: 
-    c_in: 2
-    c_out: 64
-    spec_out: 128
-    out: 2
-    dim_in: [36, 300]
-    tempKernel: 32
+    architecture: [ 
+      [2,    32,  64,  64, 16],
+    ]
   encoder_training:
     verbose: True
-    n_epochs: 10
+    n_epochs: 5
+    optimizer_name: SGD
+    optimizer:
+      lr: 0.2
+      momentum: 0.9
+    gradient_clipping: 0.2
   classifier: 
-    in_dim: 2
-    hidden_layers: [128, 512, 1024, 256]
+    in_dim: 512
+    hidden_layers: [128, 512, 256]
   classifier_training:
     verbose: True
-    n_epochs: 500
+    n_epochs: 5
     optimizer_name: SGD
     optimizer:
       lr: 0.1
@@ -83,3 +86,45 @@ standard_stratified2:
     gradient_clipping: 0.2
   tracking:
     track_decision: True
+  visuals: ["classification", "memory", "loss", "metric"]
+
+complex_encoder:
+  data:
+    name: kinetic_skeleton
+    path: ./content/
+    verbose: True
+  loader:
+    batch_size: 64
+  data_split:
+    lim: 500
+  emb_tracking: True
+  encoder: 
+    # [(c_in, c_out, spec_out, out, kernel)]
+    architecture: [ 
+      [2,    32,  64,  64, 16],
+      [64,   64,  64,  64, 16],
+      [64,   64, 128, 128, 16],
+      [128, 128, 256, 256, 16]
+    ] 
+  encoder_training:
+    verbose: True
+    n_epochs: 5
+    optimizer_name: SGD
+    optimizer:
+      lr: 0.2
+      momentum: 0.9
+    gradient_clipping: 0.2
+  classifier: 
+    in_dim: 512
+    hidden_layers: [128, 512, 256]
+  classifier_training:
+    verbose: True
+    n_epochs: 5
+    optimizer_name: SGD
+    optimizer:
+      lr: 0.1
+      momentum: 0.9
+    gradient_clipping: 0.2
+  tracking:
+    track_decision: True
+  visuals: ["classification", "memory", "loss", "metric"]

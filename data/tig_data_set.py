@@ -88,6 +88,7 @@ class TIGDataset(Dataset):
             else:
                 log.info(f"Data exist extracted! ({self.path + self.name + '.npz'})")
 
+        log.info(f"Load data...")
         data = np.load(self.path +  self.file_name, allow_pickle=True)
         self.x = data["x"]
         self.y = data["y"]

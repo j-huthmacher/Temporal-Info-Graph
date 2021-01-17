@@ -778,40 +778,41 @@ class Tracker(object):
         """
         Path(self.local_path).mkdir(parents=True, exist_ok=True)
 
-        with open(f'{self.local_path}/config.json', 'w') as fp:
-            json.dump({
-                **self.cfg,
-                **{
-                    "val_data_size": len(self.solver.val_loader.dataset) if hasattr(self.solver, "val_loader") else "-",
-                    "train_data_size": len(self.solver.train_loader.dataset),
-                    "exec_dir": os.getcwd(),
-                    "optimzer": str(self.solver.optimizer),
-                }}, fp)
+        if hasattr(self, "solver"):
+            with open(f'{self.local_path}/config.json', 'w') as fp:
+                json.dump({
+                    **self.cfg,
+                    **{
+                        "val_data_size": len(self.solver.val_loader.dataset) if hasattr(self.solver, "val_loader") else "-",
+                        "train_data_size": len(self.solver.train_loader.dataset),
+                        "exec_dir": os.getcwd(),
+                        "optimzer": str(self.solver.optimizer),
+                    }}, fp)
 
-        np.save(f'{self.local_path}/TIG_{self.tag}train_losses.npy',
-                self.solver.train_losses)
+            np.save(f'{self.local_path}/TIG_{self.tag}train_losses.npy',
+                    self.solver.train_losses)
 
-        if hasattr(self.solver, "train_metric"):
-            np.save(f"{self.local_path}/TIG_{self.tag}train.metrics.npy",
-                    self.solver.train_metrics)
+            if hasattr(self.solver, "train_metric"):
+                np.save(f"{self.local_path}/TIG_{self.tag}train.metrics.npy",
+                        self.solver.train_metrics)
 
-        np.save(f'{self.local_path}/TIG_{self.tag}val_losses.npy',
-                self.solver.val_losses)
+            np.save(f'{self.local_path}/TIG_{self.tag}val_losses.npy',
+                    self.solver.val_losses)
 
-        if hasattr(self.solver, "val_metric"):
-            np.save(f"{self.local_path}/TIG_{self.tag}val.metrics.npy",
-                    self.solver.val_metrics)
+            if hasattr(self.solver, "val_metric"):
+                np.save(f"{self.local_path}/TIG_{self.tag}val.metrics.npy",
+                        self.solver.val_metrics)
 
-        #### Test / Evaluation Metrics ####
-        if hasattr(self.solver, "metric"):
-            np.save(f'{self.local_path}/TIG_{self.tag}top1.npy',
-                    self.solver.metric[0])
-            np.save(f'{self.local_path}/TIG_{self.tag}top5.npy',
-                    self.solver.metric[1])
+            #### Test / Evaluation Metrics ####
+            if hasattr(self.solver, "metric"):
+                np.save(f'{self.local_path}/TIG_{self.tag}top1.npy',
+                        self.solver.metric[0])
+                np.save(f'{self.local_path}/TIG_{self.tag}top5.npy',
+                        self.solver.metric[1])
 
-        torch.save(
-            self.model, f'{self.local_path}/TIG_{self.tag.replace(".", "")}.pt')
-        log.info(f"Experiment stored at '{self.local_path}")
+            torch.save(
+                self.model, f'{self.local_path}/TIG_{self.tag.replace(".", "")}.pt')
+            log.info(f"Experiment stored at '{self.local_path}")
 
     def track_checkpoint(self):
         """ Function to track and manage checkpoints of the training.

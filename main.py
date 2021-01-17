@@ -3,18 +3,21 @@
 
     @author: jhuthmacher
 """
+import os
 import json
+import signal
+import sys
 
 import argparse
 import torch
 import yaml
+from datetime import datetime
 
 #pylint: disable=import-error
 from tracker import Tracker
 from experiments import  experiment
 from config.config import log
 from data.tig_data_set import TIGDataset
-
 
 #### Set Up CLI ####
 parser = argparse.ArgumentParser(prog='tig', description='Temporal Info Graph')
@@ -89,9 +92,43 @@ if args.train:
     torch.manual_seed(0)
     config["seed"] = 0
 
-    # experiment is the template function that is executed by the tracker and configured by "config"
-    tracker.track(experiment, config)
+    #### Handler ####
+    def signal_handler(sig, frame):
+        tracker.cfg["status"] = "Failed (Exception)"
+        tracker.cfg["end_time"] = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+        tracker.cfg["duration"] = str(datetime.strptime(tracker.cfg["end_time"],
+                                                            "%d.%m.%Y %H:%M:%S") -
+                                    datetime.strptime(tracker.cfg["start_time"],
+                                                            "%d.%m.%Y %H:%M:%S"))
+        if tracker.local:
+                tracker.track_locally()
+        path = os.path.normpath(tracker.local_path).split(os.sep)
+        os.rename(path, path.replace(path[-1], "FAILED_"+path[-1]))
+        sys.exit(0)
 
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM , signal_handler)
+
+    try:
+        # experiment is the template function that is executed by the tracker and configured by "config"
+        tracker.track(experiment, config)
+    except Exception as e:
+        log.exception(e)
+        tracker.cfg["status"] = "Failed (Exception)"
+        tracker.cfg["end_time"] = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+        tracker.cfg["duration"] = str(datetime.strptime(tracker.cfg["end_time"],
+                                                         "%d.%m.%Y %H:%M:%S") -
+                                      datetime.strptime(tracker.cfg["start_time"],
+                                                         "%d.%m.%Y %H:%M:%S"))
+        if tracker.local:
+            tracker.track_locally()
+        path = os.path.normpath(tracker.local_path)
+        for retry in range(100):
+            try:
+                os.rename(path, path.replace(path.split(os.sep)[-1], "FAILED_"+path.split(os.sep)[-1]))
+                break
+            except:
+                pass
 
 elif args.prep_data:
     # pass

@@ -19,12 +19,12 @@ import seaborn as sns
 import sacred
 
 # pylint: disable=import-error
-from config.config import log
+from config.config import log, create_logger
 from data import KINECT_ADJACENCY
 from data.tig_data_set import TIGDataset
 from model import MLP, Solver, TemporalInfoGraph
 from tracker import Tracker
-# from evaluation import svc_classify, mlp_classify, randomforest_classify
+from evaluation import svc_classify, mlp_classify, randomforest_classify
 
 #### Default Experiment Configuration ####
 default = {
@@ -97,7 +97,7 @@ def experiment(tracker: Tracker, config: dict):
             loader = [train_loader, val_loader]
 
         #### TIG Set Up ####
-        tig = TemporalInfoGraph(**config["encoder"]).cuda()
+        tig = TemporalInfoGraph(**config["encoder"], A=KINECT_ADJACENCY).cuda()
         solver = Solver(tig, loader)
 
         #### Tracking ####
@@ -176,7 +176,8 @@ class Experiment():
         except:  #pylint: disable=bare-except
             # Not each experiement has embeddings saved
             pass
-
+        
+        #### TIG Model/Losses/Metric ####
         try:
             self.classifier = torch.load(f"{path}TIG_MLP.pt").cuda()
             self.clf_train_loss = np.load(f"{path}TIG_MLP.train_losses.npy")
@@ -186,14 +187,17 @@ class Experiment():
         except:  #pylint: disable=bare-except
             # Not each experiement has  a classifier
             pass
-
+        
+        #### TIG Model/Losses ####
         try:
             self.tig = torch.load(f"{path}TIG_.pt").cuda()
             self.tig_train_loss = np.load(f"{path}TIG_train_losses.npy")
             self.tig_val_loss = np.load(f"{path}TIG_val_losses.npy")
         except:  #pylint: disable=bare-except
             pass
+        
 
+        #### TIG Train Metric ####
         try:
             self.tig_train_metrics = np.load(f"{path}TIG_train.metrics.npy")
             self.tig_val_metrics = np.load(f"{path}TIG_train.metrics.npy")
@@ -203,6 +207,9 @@ class Experiment():
         with open(f"{path}config.json") as file:
             self.config = json.load(file)
             self.config["exp_path"] = self.path
+        
+        #### Set Up Logging ####
+        self.log = create_logger(fpath = self.config["exp_path"], name="EXP Logger", suffix="EXP_")
 
     @property
     def emb(self):
@@ -225,57 +232,63 @@ class Experiment():
         """
         return np.array(list(np.array(self.emb)[:, 1])) if self.emb is not None else None
 
-    # def evaluate_emb(self, plot: bool = False):
-    #     """ Evaluate the quality of the embeddings by testing different classifier.
+    def evaluate_emb(self, plot: bool = False):
+        """ Evaluate the quality of the embeddings by testing different classifier.
 
-    #         Paramters:
-    #             plot: bool
-    #                 If true the embeddings with their predictions are plotted.
-    #     """
-    #     #### SVM Classifier ####
-    #     pred, acc = svc_classify(self.emb_x, self.emb_y, True)
+            Paramters:
+                plot: bool
+                    If true the embeddings with their predictions are plotted.
+        """
+        if hasattr(self, "clf_val_metrics"):
+            self.log.info(f"(Pipeline) MLP Accuracy: {np.max(self.clf_val_metrics)}")
+    
+        #### SVM Classifier ####
+        self.log.info("Run SVM...")
+        acc = svc_classify(self.emb_x, self.emb_y, search=True)
 
-    #     if plot:
-    #         pca = PCA(n_components=2, random_state=123)
-    #         x = pca.fit_transform(self.emb_x)
+        if plot:
+            pca = PCA(n_components=2, random_state=123)
+            x = pca.fit_transform(self.emb_x)
 
-    #         _, ax = plt.subplots(figsize=(5,5))
-    #         ax.set_title(f"SVM - Classifier (Avg. accuracy: {acc})")
-    #         ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
-    #                     cmap=sns.color_palette("Spectral", as_cmap=True))
-    #         ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
-    #                     cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
+            _, ax = plt.subplots(figsize=(5,5))
+            ax.set_title(f"SVM - Classifier (Avg. accuracy: {acc})")
+            ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
+                        cmap=sns.color_palette("Spectral", as_cmap=True))
+            ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
+                        cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
 
-    #     print("SVM Acc.", acc)
+        self.log.info(f"SVM Avg. Accuracy (top-1, top-5): {acc}")
 
-    #     #### MLP Classifier ####
-    #     pred, acc = mlp_classify(self.emb_x, self.emb_y, True)
+        #### MLP Classifier ####
+        self.log.info("Run MLP...")
+        acc = mlp_classify(x=self.emb_x, y=self.emb_y, search=True)
 
-    #     if plot:
-    #         pca = PCA(n_components=2, random_state=123)
-    #         x = pca.fit_transform(self.emb_x)
+        if plot:
+            pca = PCA(n_components=2, random_state=123)
+            x = pca.fit_transform(self.emb_x)
 
-    #         _, ax = plt.subplots(figsize=(5,5))
-    #         ax.set_title(f"MLP (Sklearn) - Classifier (Avg. accuracy: {acc})")
-    #         ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
-    #                     cmap=sns.color_palette("Spectral", as_cmap=True))
-    #         ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
-    #                     cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
+            _, ax = plt.subplots(figsize=(5,5))
+            ax.set_title(f"MLP (Sklearn) - Classifier (Avg. accuracy: {acc})")
+            ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
+                        cmap=sns.color_palette("Spectral", as_cmap=True))
+            ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
+                        cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
 
-    #     print("MLP Acc.", acc)
+        self.log.info(f"MLP Avg. Accuracy (top-1, top-5): {acc}")
 
-    #     #### Random Forest Classifier ####
-    #     pred, acc = randomforest_classify(self.emb_x, self.emb_y, True)
+        #### Random Forest Classifier ####
+        self.log.info("Run Random Forest...")
+        acc = randomforest_classify(x=self.emb_x, y=self.emb_y, search=True)
 
-    #     if plot:
-    #         pca = PCA(n_components=2, random_state=123)
-    #         x = pca.fit_transform(self.emb_x)
+        if plot:
+            pca = PCA(n_components=2, random_state=123)
+            x = pca.fit_transform(self.emb_x)
 
-    #         _, ax = plt.subplots(figsize=(5,5))
-    #         ax.set_title(f"Random Forest - Classifier (Avg. accuracy: {acc})")
-    #         ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
-    #                     cmap=sns.color_palette("Spectral", as_cmap=True))
-    #         ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
-    #                     cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
+            _, ax = plt.subplots(figsize=(5,5))
+            ax.set_title(f"Random Forest - Classifier (Avg. accuracy: {acc})")
+            ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
+                        cmap=sns.color_palette("Spectral", as_cmap=True))
+            ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
+                        cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
 
-    #     print("Random Forest Acc.", acc)
+        self.log.info(f"Random Forest Avg. Accuracy (top-1, top-5): {acc}")

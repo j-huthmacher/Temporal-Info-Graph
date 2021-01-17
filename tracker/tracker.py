@@ -707,10 +707,13 @@ class Tracker(object):
             self.solver = train.__self__
 
             #### Pre Training ####
-            cfg["train_size"] = sys.getsizeof(
-                self.solver.train_loader.dataset) / 1024**3
-            cfg["val_size"] = sys.getsizeof(
-                self.solver.val_loader.dataset) / 1024**3
+            cfg["train_size"] = '{:.2f}GB'.format(sys.getsizeof(self.solver.train_loader.dataset) / 1024**3)
+            cfg["val_size"] = '{:.2f}GB'.format(sys.getsizeof(self.solver.val_loader.dataset) / 1024**3)
+            try:
+                cfg["train_length"] = len(self.solver.train_loader.dataset)
+                cfg["val_length"] = len(self.solver.val_loader.dataset)
+            except:
+                pass
 
             Path(self.local_path).mkdir(parents=True, exist_ok=True)
 

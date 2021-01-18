@@ -8,6 +8,36 @@ from math import floor
 import torch
 import torch.nn as nn
 
+class TestLayer(nn.Module):
+    def forward(self, x):
+        return x + 1
+
+
+class FF(nn.Module):
+    """
+        @source: InfoGraph
+    """
+    def __init__(self, input_dim):
+        super().__init__()
+        # self.c0 = nn.Conv1d(input_dim, 512, kernel_size=1)
+        # self.c1 = nn.Conv1d(512, 512, kernel_size=1)
+        # self.c2 = nn.Conv1d(512, 1, kernel_size=1)
+        self.block = nn.Sequential(
+            nn.Linear(input_dim, input_dim),
+            nn.ReLU(),
+            nn.Linear(input_dim, input_dim),
+            nn.ReLU(),
+            nn.Linear(input_dim, input_dim),
+            nn.ReLU()
+        )
+        self.linear_shortcut = nn.Linear(input_dim, input_dim)
+        # self.c0 = nn.Conv1d(input_dim, 512, kernel_size=1, stride=1, padding=0)
+        # self.c1 = nn.Conv1d(512, 512, kernel_size=1, stride=1, padding=0)
+        # self.c2 = nn.Conv1d(512, 1, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x):
+        return self.block(x) + self.linear_shortcut(x)
+
 
 class TemporalConvolution(nn.Module):
     """ Building block for doing temporal convolutions.
@@ -210,7 +240,7 @@ class TemporalInfoGraph(nn.Module):
 
     def __init__(self, dim_in: tuple = None, architecture: [tuple] = [(2, 32, 32, 32, 32)],
                  activation: str = "leakyReLU", batch_norm: bool = True,
-                 A: torch.Tensor = None):
+                 A: torch.Tensor = None, discriminator_layer: bool = True):
         """ Initilization of the TIG model.
 
             Parameter:
@@ -248,7 +278,8 @@ class TemporalInfoGraph(nn.Module):
         # self.dim_in = dim_in 
 
         layers = []
-        
+        self.embedding_dim = architecture[-1][3]
+
         for (c_in, c_out, spec_out, out, kernel) in architecture:
             #### REGULARIZATION ####
             if batch_norm:
@@ -263,6 +294,13 @@ class TemporalInfoGraph(nn.Module):
                 layers.append(nn.LeakyReLU())
             elif activation == "ReLU":
                 layers.append(nn.ReLU())
+
+        self.discriminator_layer = discriminator_layer
+        if discriminator_layer:
+            self.global_ff = FF(self.embedding_dim)
+            self.local_ff = FF(self.embedding_dim)
+        # self.global_ff = nn.Identity(self.embedding_dim)  
+        # self.local_ff = nn.Identity(self.embedding_dim)  # To test if reshaping works to 
 
         self.model = nn.Sequential(*layers)
 
@@ -288,7 +326,7 @@ class TemporalInfoGraph(nn.Module):
                     Adjacency matrix. Dimension (nodes, nodes)
 
             Return:
-                torch.Tensor, torch.Tensor: 
+                torch.Tensor, torch.Tensor:
                 Dimensions: (batch, nodes), (batch, features, nodes)
         """
         if not isinstance(X, torch.Tensor):
@@ -303,11 +341,28 @@ class TemporalInfoGraph(nn.Module):
         # Mean readout: Average each feature over all nodes --> dimension (features, 1)
         # Average over dimension 2, dim 2 corresponds to the nodes
         # (We want to aggregate the representation of each node!)
-        global_Z = Z.mean(dim=2) # Simple mean readout, dim: (batch_size, emb_features)
-        local_Z = Z  # dim: (batch_size, emb_features, nodes), TODO: Validate the dimensions
+        # global_Z = self.global_ff(Z.mean(dim=2)) # Simple mean readout, dim: (batch_size, emb_features)
+        # local_Z = self.local_ff(Z)  # dim: (batch_size, emb_features, nodes), TODO: Validate the dimensions
+        if self.discriminator_layer:
+            global_Z = self.global_ff(Z.mean(dim=2))
+            local_Z = self.local_ff(self.reshape_3d_2d(Z))
+            local_Z = self.reshape_2d_3d(local_Z, Z.shape)
+        else:
+            global_Z = Z.mean(dim=2)
+            local_Z = Z
 
         # Remove "empty" dimensions, i.e. dim = 1
         return torch.squeeze(global_Z, dim=-1), torch.squeeze(local_Z, dim=-1)
+
+    def reshape_3d_2d(self, x):
+        """
+        """
+        return x.permute(0, 2, 1).resize(x.shape[0] * x.shape[2], x.shape[1])
+
+    def reshape_2d_3d(self, x, shape):
+        """
+        """
+        return x.resize(shape[0], shape[2], shape[1]).permute(0,2,1)
 
     @property
     def num_paramters(self):

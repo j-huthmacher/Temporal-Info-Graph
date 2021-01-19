@@ -640,6 +640,9 @@ class Tracker(object):
                 name = "TIG.loss"
                 self.save_plot(fig, path, name)
 
+        #### Store Intermediate Values ####
+        self.save_loss_metric()
+
         #### Plain values and Python objects ####
         if self.ex is not None:
             #### Remote Tracking ####
@@ -776,6 +779,24 @@ class Tracker(object):
 
         return inner
 
+    def save_loss_metric(self):
+        """
+        """
+        np.save(f'{self.local_path}/TIG_{self.tag}train_losses.npy',
+                    self.solver.train_losses)
+
+        if hasattr(self.solver, "train_metric"):
+            np.save(f"{self.local_path}/TIG_{self.tag}train.metrics.npy",
+                    self.solver.train_metrics)
+        
+        if hasattr(self.solver, "val_losses"):
+            np.save(f'{self.local_path}/TIG_{self.tag}val_losses.npy',
+                        self.solver.val_losses)
+
+        if hasattr(self.solver, "val_metric"):
+            np.save(f"{self.local_path}/TIG_{self.tag}val.metrics.npy",
+                    self.solver.val_metrics)
+
     def track_locally(self):
         """ Function to track everything after the training/testing is done locally.
         """
@@ -792,19 +813,7 @@ class Tracker(object):
                         "optimzer": str(self.solver.optimizer),
                     }}, fp)
 
-            np.save(f'{self.local_path}/TIG_{self.tag}train_losses.npy',
-                    self.solver.train_losses)
-
-            if hasattr(self.solver, "train_metric"):
-                np.save(f"{self.local_path}/TIG_{self.tag}train.metrics.npy",
-                        self.solver.train_metrics)
-
-            np.save(f'{self.local_path}/TIG_{self.tag}val_losses.npy',
-                    self.solver.val_losses)
-
-            if hasattr(self.solver, "val_metric"):
-                np.save(f"{self.local_path}/TIG_{self.tag}val.metrics.npy",
-                        self.solver.val_metrics)
+            self.save_loss_metric()
 
             #### Test / Evaluation Metrics ####
             if hasattr(self.solver, "metric"):

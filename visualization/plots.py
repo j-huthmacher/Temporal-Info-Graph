@@ -42,8 +42,11 @@ def plot_emb(x: np.array, y: np.array, title: str = "", ax: matplotlib.axes.Axes
     """
     if isinstance(x, torch.Tensor):
         x = x.detach().cpu().numpy()
+    
+    mode_str = ""
 
     if x.shape[1] > 2:
+        mode_str = f"({mode})"
         if mode == "PCA":
             pca = PCA(n_components=2, random_state=123)
             x = pca.fit_transform(x)
@@ -63,6 +66,8 @@ def plot_emb(x: np.array, y: np.array, title: str = "", ax: matplotlib.axes.Axes
 
     ax[0].scatter(x[:,0], x[:,1], c=y.astype(int), cmap=sns.color_palette("Spectral", as_cmap=True),
                   edgecolors='w')
+    
+    ax[0].set_title(f"{title} {mode_str}")
     if count:
         sns.countplot(x=y, ax=ax[1])
 

@@ -125,6 +125,3 @@ complex_encoder:
       lr: 0.1
       momentum: 0.9
     gradient_clipping: 0.2
-  tracking:
-    track_decision: True
-  visuals: ["classification", "memory", "loss", "metric"]

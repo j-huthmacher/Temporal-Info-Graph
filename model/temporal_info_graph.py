@@ -227,7 +227,7 @@ class SpectralConvolution(nn.Module):
         # Adjacency matrix multiplication in time!
         # TODO: Adapt the indices to omit the permutation before and after.
         self.W = self.W.to(self.device)
-        H = torch.einsum("ij,jklm->kilm", [A, X.permute(2, 0, 3, 1)]).to(self.device)
+        H = torch.einsum("ij, jklm -> kilm", [A, X.permute(2, 0, 3, 1)]).to(self.device)
         H = torch.matmul(H, self.W)
         H = H.permute(0, 3, 1, 2)
 
@@ -312,7 +312,7 @@ class TemporalInfoGraph(nn.Module):
     def is_cuda(self):
         return next(self.parameters()).is_cuda
 
-    def forward(self, X: torch.Tensor, A: torch.Tensor):
+    def forward(self, X: torch.Tensor, A: torch.Tensor = None):
         """ Forward function of the temporl info graph model.
 
             Consists of a initial temporal convolution, followed by an spectral

@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader
 
 from PIL import Image
 import io
-from IPython.display import display 
+
 
 from paramiko import SSHClient, SSHConfig, AutoAddPolicy, SFTPClient
 
@@ -330,7 +330,7 @@ class Experiment():
         """
         """
         image = Image.open(io.BytesIO(self.img[name]))
-        return display(image)
+        return image
 
     @property
     def emb(self):

@@ -4,6 +4,7 @@
 import io
 import json
 import os
+import pprint
 
 import numpy as np
 import torch
@@ -13,6 +14,7 @@ from imblearn.over_sampling import RandomOverSampler
 from sklearn.model_selection import train_test_split
 from sklearn.decomposition import PCA
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 
 from PIL import Image
 import io
@@ -115,26 +117,27 @@ def experiment(tracker: Tracker, config: dict):
             # Track the final embeddings after the TIG encoder is trained.
             emb_x = np.array([])
             emb_y = np.array([])
-            for batch_x, batch_y in train_loader:
-                pred, _ = solver.model(batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1),
-                                       torch.tensor(KINECT_ADJACENCY))
-                if emb_x.size:
-                    emb_x = np.concatenate(
-                        [emb_x, pred.detach().cpu().numpy()])
-                else:
-                    emb_x = pred.detach().cpu().numpy()
+            with torch.no_grad():
+                for batch_x, batch_y in train_loader:
+                    pred, _ = solver.model(batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1),
+                                           torch.tensor(KINECT_ADJACENCY))
+                    if emb_x.size:
+                        emb_x = np.concatenate(
+                            [emb_x, pred.detach().cpu().numpy()])
+                    else:
+                        emb_x = pred.detach().cpu().numpy()
 
-                if emb_y.size:
-                    emb_y = np.concatenate([emb_y, batch_y.numpy()])
-                else:
-                    emb_y = batch_y.numpy()
+                    if emb_y.size:
+                        emb_y = np.concatenate([emb_y, batch_y.numpy()])
+                    else:
+                        emb_y = batch_y.numpy()
 
-            buffer = io.BytesIO()
-            np.savez(buffer, x=emb_x, y=emb_y)
-            tracker.add_artifact(buffer.getvalue(), name="embeddings.npz")
+                buffer = io.BytesIO()
+                np.savez(buffer, x=emb_x, y=emb_y)
+                tracker.add_artifact(buffer.getvalue(), name="embeddings.npz")
 
-            #### Local Embedding Tracking ####
-            np.savez(tracker.local_path+"embeddings", x=emb_x, y=emb_y)
+                #### Local Embedding Tracking ####
+                np.savez(tracker.local_path+"embeddings", x=emb_x, y=emb_y)
         
         if not "classifier" in config or not isinstance(config["classifier"], dict):
             # If the experiment only trains the encoder
@@ -171,6 +174,8 @@ class Experiment():
         """
         self.img={}
         self.path = path
+        self.folder =  os.path.normpath(self.path).split(os.sep)[0]
+        self.name = os.path.normpath(self.path).split(os.sep)[-1]
         if ssh is None:
             try:
                 data = np.load(f"{path}embeddings.npz")
@@ -200,9 +205,9 @@ class Experiment():
             
             #### TIG Model/Losses ####
             try:
-                self.tig = torch.load(f"{path}TIG_.pt").cuda()
                 self.tig_train_loss = np.load(f"{path}TIG_train_losses.npy")
                 self.tig_val_loss = np.load(f"{path}TIG_val_losses.npy")
+                self.tig = torch.load(f"{path}TIG_.pt").cuda()
             except:  #pylint: disable=bare-except
                 pass
             
@@ -333,6 +338,14 @@ class Experiment():
         return image
 
     @property
+    def tig_input_shape(self, n_batches: int = 2, n_nodes: int = 36, n_times: int = 300):
+        # (batch, features, nodes, time)
+        return (n_batches,
+                self.config["encoder"]["architecture"][0][0],
+                n_nodes,
+                n_times)
+
+    @property
     def emb(self):
         """ Embeddings from the encoder (complete data set).
         """
@@ -359,16 +372,29 @@ class Experiment():
 
         representation = f"Experiment ({os.path.normpath(self.path).split(os.sep)[-1]})\n"
         representation += f"--- Duration: {self.config['duration'] if 'duration' in self.config else 'Not Finished'}\n"
-        representation += f"--- Batchsize: {self.config['loader']['batch_size']}\n"
-        representation += f"--- Batchsize: {self.config['encoder_training']['optimizer']['lr']}\n"
-        representation += f"--- Training set: {self.config['train_length']}\n"
-        representation += f"--- Validation set: {self.config['val_length']}\n"
+        representation += f"--- Batchsize: {self.config['loader']['batch_size'] if 'loader' in self.config else 'Config Incomplete'}\n"
+        representation += f"--- Batchsize: {self.config['encoder_training']['optimizer']['lr'] if 'encoder_training' in self.config else 'Config Incomplete'}\n"
+        representation += f"--- Training set: {self.config['train_length'] if 'train_length' in self.config else 'Config Incomplete'}\n"
+        representation += f"--- Validation set: {self.config['val_length'] if 'val_length' in self.config else 'Config Incomplete'}\n"
         representation += f"--- Last JSD Loss (Train): {self.tig_train_loss[-1] if hasattr(self, 'tig_train_loss') else 'Not Finished'}\n"
         representation += f"--- Last JSD Loss (Val): {self.tig_val_loss[-1] if hasattr(self, 'tig_val_loss') else 'Not Finished'}\n"
         representation += f"--- Embedding Shape: {self.emb_x.shape if self.emb_x is not None else 'Not Finished'}\n"
 
         return representation
     
+    def tensorboard(self, replace=False):
+        """
+        """
+        if not os.path.exists(f"./runs/{self.name}") and replace == False:
+            writer = SummaryWriter(log_dir=f"./runs/{self.name}")
+            writer.add_graph(self.tig.cpu(), torch.rand(self.tig_input_shape).cpu())
+            for i, val in enumerate(self.tig_train_loss):
+                writer.add_scalar('training loss', val, i)
+
+            for i, val in enumerate(self.tig_val_loss):
+                writer.add_scalar('val loss', val, i)
+            
+            writer.add_text("config", pprint.pformat(self.config, indent=1, width=80).replace("\n", "  \n").replace("     ", "&nbsp;"))
 
     #### Experiment Visualization ####
     def plot_dash(self):

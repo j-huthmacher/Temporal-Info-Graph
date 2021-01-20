@@ -718,6 +718,8 @@ class Tracker(object):
             except:
                 pass
 
+            log.info(f"Experiment path: {self.local_path}")
+
             Path(self.local_path).mkdir(parents=True, exist_ok=True)
 
             with open(f'{self.local_path}/config.json', 'w') as fp:

@@ -721,7 +721,7 @@ class Tracker(object):
             Path(self.local_path).mkdir(parents=True, exist_ok=True)
 
             with open(f'{self.local_path}/config.json', 'w') as fp:
-                json.dump(cfg, fp)
+                json.dump({**cfg, **self.cfg}, fp)
 
             train(cfg, track=self.track, encoder=encoder)
 

@@ -247,7 +247,7 @@ class Tracker(object):
     def track_loss(self):
         """ Function to track the loss calculation.
         """
-        if "memory" in self.cfg["visuals"]:
+        if  "visuals" in self.cfg and "memory" in self.cfg["visuals"]:
             #### Check Memory Consumption ####
             mem = psutil.virtual_memory()
             mem_used.append(mem.used/1024**3)
@@ -335,7 +335,7 @@ class Tracker(object):
                 f.write(f"{loss_fn.num_nodes}\n")
             f.close()
             
-            if "discriminator" in self.cfg["visuals"]:
+            if  "visuals" in self.cfg and "discriminator" in self.cfg["visuals"]:
                 f = Path(f"{self.local_path}loss.stats.expectations.csv")
                 if not f.is_file():
                     f = open(f"{self.local_path}loss.stats.expectations.csv", "a")
@@ -370,7 +370,7 @@ class Tracker(object):
                 # yhat_norm = F.sigmoid(loss_fn.discr_matr)
                 yhat_norm = torch.sigmoid(loss_fn.discr_matr)
 
-                if "sigmoid" in self.cfg["visuals"]:
+                if  "visuals" in self.cfg and "sigmoid" in self.cfg["visuals"]:
                     Path(self.local_path + "sigmoid/").mkdir(parents=True, exist_ok=True)
                     plot_heatmap(yhat_norm.detach().numpy()).savefig(
                         self.local_path + f"sigmoid/{self.solver.epoch}.sigmoid.batch{self.solver.batch}.png")
@@ -466,7 +466,7 @@ class Tracker(object):
         """
         #### Plots & Animations ####
         if isinstance(self.solver.model, MLP) and self.track_decision:
-            if ("classification" in self.cfg["visuals"] or 
+            if "visuals" in self.cfg and ("classification" in self.cfg["visuals"] or 
                 ("classification.last" in self.cfg["visuals"] and
                  self.solver.epoch == self.solver.train_cfg["n_epochs"] - 1)):
                 #### Track epoch for MLP ####
@@ -522,7 +522,7 @@ class Tracker(object):
                 name = "MLP.decision.boundaries"
                 self.save_plot(fig, path, name)
 
-            if "loss" in self.cfg["visuals"] and "metric" in self.cfg["visuals"]:
+            if  "visuals" in self.cfg and "loss" in self.cfg["visuals"] and "metric" in self.cfg["visuals"]:
                 args = {
                     "loss_cfg": {
                         "data": {
@@ -546,7 +546,7 @@ class Tracker(object):
                 self.save_plot(fig, path, name)
 
             else:
-                if "loss" in self.cfg["visuals"]:
+                if  "visuals" in self.cfg and "loss" in self.cfg["visuals"]:
                     args = {
                         "data": {
                             "MLP Train Loss": self.solver.train_losses,
@@ -560,7 +560,7 @@ class Tracker(object):
                     name = "MLP.loss"
                     self.save_plot(fig, path, name)
 
-                if "metric" in self.cfg["visuals"]:
+                if  "visuals" in self.cfg and "metric" in self.cfg["visuals"]:
                     args =  {
                             "data": {
                             "MLP Top-1 Acc.": np.array(self.solver.train_metrics)[:, 0],
@@ -575,7 +575,7 @@ class Tracker(object):
                     self.save_plot(fig, path, name)
 
         if isinstance(self.solver.model, TemporalInfoGraph) and self.track_decision:
-            if "pca" in self.cfg["visuals"] or "tsne" in self.cfg["visuals"]:
+            if  "visuals" in self.cfg and "pca" in self.cfg["visuals"] or "tsne" in self.cfg["visuals"]:
                 #### Track epoch for TIG Encoder ####
                 with torch.no_grad():
                     device = self.solver.model.device
@@ -604,7 +604,7 @@ class Tracker(object):
                     }
                 }
 
-            if "pca" in self.cfg["visuals"]:
+            if  "visuals" in self.cfg and "pca" in self.cfg["visuals"]:
                 #### Plot embeddings with loss/metric curve (PCA or plain) ####
                 fig = plot_eval(**args,
                                 title=f"TIG Embeddings {args['emb_cfg']['mode']} - Epoch: {self.solver.epoch}",
@@ -614,7 +614,7 @@ class Tracker(object):
                 name = "TIG.embeddings.pca"
                 self.save_plot(fig, path, name)
 
-            if "tsne" in self.cfg["visuals"]:
+            if  "visuals" in self.cfg and "tsne" in self.cfg["visuals"]:
                 #### Plot embeddings with loss/metric curve (t-SNE) ####
                 args["emb_cfg"]["mode"] = "TSNE"
                 fig = plot_eval(**args,
@@ -626,7 +626,7 @@ class Tracker(object):
                 name = "TIG.embeddings.tsne"
                 self.save_plot(fig, path, name)
 
-            if "loss" in self.cfg["visuals"]:
+            if  "visuals" in self.cfg and "loss" in self.cfg["visuals"]:
                 args = {
                     "data": {
                         "TIG Train Loss (JSD MI)": self.solver.train_losses,

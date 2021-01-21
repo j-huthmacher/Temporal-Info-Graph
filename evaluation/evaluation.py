@@ -7,7 +7,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.manifold import TSNE
-from sklearn.metrics import accuracy_score, top_k_accuracy_score
+from sklearn.metrics import accuracy_score
 from sklearn.model_selection import GridSearchCV, KFold, StratifiedKFold
 from sklearn.model_selection import cross_val_score
 from sklearn.neural_network import MLPClassifier

@@ -8,7 +8,6 @@ import matplotlib
 import torch
 import torch.nn.functional as F
 
-
 matplotlib.use('Agg')
 
 
@@ -42,7 +41,7 @@ def jensen_shannon_mi(enc_global: torch.Tensor, enc_local: torch.Tensor):
 
     #### Sampling ####
     # Diagonal with blocks 'num_nodes' ones on the diagonal
-    mask = torch.block_diag(*[torch.ones(self.num_nodes) for _ in range(self.num_graphs)])
+    mask = torch.block_diag(*[torch.ones(self.num_nodes) for _ in range(self.num_graphs)]).to("cpu")
 
     self.pos_samples = self.discr_matr[mask == 1].reshape(self.num_graphs, self.num_nodes)
     self.neg_samples = self.discr_matr[mask == 0].reshape(self.num_graphs,

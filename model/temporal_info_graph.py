@@ -19,9 +19,6 @@ class FF(nn.Module):
     """
     def __init__(self, input_dim):
         super().__init__()
-        # self.c0 = nn.Conv1d(input_dim, 512, kernel_size=1)
-        # self.c1 = nn.Conv1d(512, 512, kernel_size=1)
-        # self.c2 = nn.Conv1d(512, 1, kernel_size=1)
         self.block = nn.Sequential(
             nn.Linear(input_dim, input_dim),
             nn.ReLU(),
@@ -31,9 +28,6 @@ class FF(nn.Module):
             nn.ReLU()
         )
         self.linear_shortcut = nn.Linear(input_dim, input_dim)
-        # self.c0 = nn.Conv1d(input_dim, 512, kernel_size=1, stride=1, padding=0)
-        # self.c1 = nn.Conv1d(512, 512, kernel_size=1, stride=1, padding=0)
-        # self.c2 = nn.Conv1d(512, 1, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
         return self.block(x) + self.linear_shortcut(x)
@@ -46,7 +40,8 @@ class TemporalConvolution(nn.Module):
     """
 
     def __init__(self, c_in: int, c_out: int = 1, kernel: Any = 1,
-                 weights: Any = None, activation: str = "leakyReLU", dropout = 0.5):
+                 weights: Any = None, activation: str = "leakyReLU", dropout = 0.5,
+                 bn_in: bool = True):
         """ Initialization of the temporal convolution, which is represented by a simple 2D convolution.
 
             Parameters:
@@ -84,7 +79,10 @@ class TemporalConvolution(nn.Module):
             self.conv.weight = torch.nn.Parameter(self.weights)
 
         #### REGULARIZATION ####
-        self.bn1 = nn.BatchNorm2d(self.c_in)
+        self.bn_in = bn_in
+        if bn_in:
+            self.bn1 = nn.BatchNorm2d(self.c_in)
+
         self.bn2 = nn.BatchNorm2d(self.c_out)
         self.dropout = nn.Dropout(dropout)
 
@@ -118,7 +116,8 @@ class TemporalConvolution(nn.Module):
             Return:
                 torch.Tensor: Dimension (batch, features, time, nodes)
         """
-        X = self.bn1(X)
+        if self.bn_in:
+            X = self.bn1(X)
         X = self.conv(X)
         X = self.bn2(X)
         X = self.dropout(X)
@@ -132,7 +131,7 @@ class TemporalConvolution(nn.Module):
                 dim_in: tuple
                     Input dimension of the data. Here we use the scheme of axis, i.e. input
                     dim follows the form (x,y).
-                    dim_in[0] = x; dim_in[1] = y 
+                    dim_in[0] = x; dim_in[1] = y
         """
 
         nominatorH = (dim_in[0] + (2 * self.conv.padding[0]) - (self.conv.dilation[0] * 
@@ -285,9 +284,9 @@ class TemporalInfoGraph(nn.Module):
             if batch_norm:
                 layers.append(nn.BatchNorm2d(c_in))
 
-            layers.append(TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel))
+            layers.append(TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel, bn_in=False))
             layers.append(SpectralConvolution(c_in=c_out, c_out=spec_out, A=A))
-            layers.append(TemporalConvolution(c_in=spec_out, c_out=out, kernel=kernel))
+            layers.append(TemporalConvolution(c_in=spec_out, c_out=out, kernel=kernel, bn_in=False))
 
             #### ACTIVATION #####
             if activation == "leakyReLU":
@@ -331,7 +330,7 @@ class TemporalInfoGraph(nn.Module):
         """
         if not isinstance(X, torch.Tensor):
             X = torch.tensor(X, dtype=torch.float32)
-        
+
         # Features could be twice or more!
         X = X.type('torch.FloatTensor').to(self.device)
 
@@ -345,8 +344,8 @@ class TemporalInfoGraph(nn.Module):
         # local_Z = self.local_ff(Z)  # dim: (batch_size, emb_features, nodes), TODO: Validate the dimensions
         if self.discriminator_layer:
             global_Z = self.global_ff(Z.mean(dim=2))
-            local_Z = self.local_ff(self.reshape_3d_2d(Z))
-            local_Z = self.reshape_2d_3d(local_Z, Z.shape)
+            local_Z = self.local_ff(self.permute_3d_2d(Z))
+            local_Z = self.permute_2d_3d(local_Z, Z.shape)
         else:
             global_Z = Z.mean(dim=2)
             local_Z = Z
@@ -354,12 +353,12 @@ class TemporalInfoGraph(nn.Module):
         # Remove "empty" dimensions, i.e. dim = 1
         return torch.squeeze(global_Z, dim=-1), torch.squeeze(local_Z, dim=-1)
 
-    def reshape_3d_2d(self, x):
+    def permute_3d_2d(self, x):
         """
         """
         return x.permute(0, 2, 1).resize(x.shape[0] * x.shape[2], x.shape[1])
 
-    def reshape_2d_3d(self, x, shape):
+    def permute_2d_3d(self, x, shape):
         """
         """
         return x.resize(shape[0], shape[2], shape[1]).permute(0,2,1)

@@ -276,7 +276,7 @@ class Solver():
                 #     track("training")
 
             if not isinstance(self.yhat, tuple):
-                self.train_metric = self.evaluate(self.train_pred, self.train_label)
+                self.train_metric = evaluate(self.train_pred, self.train_label)
                 self.train_metrics.append(self.train_metric)
                 self.train_pred = np.array([])
                 self.train_label = np.array([])
@@ -294,7 +294,7 @@ class Solver():
                         self.val_step(batch_x, batch_y, encoder)
                     
                     if not isinstance(self.yhat, tuple) and len(self.val_loader) > 0:
-                        self.val_metric = self.evaluate(self.val_pred, self.val_label)
+                        self.val_metric = evaluate(self.val_pred, self.val_label)
                         self.val_metrics.append(self.val_metric)
                         self.val_pred = np.array([])
                         self.val_label = np.array([])
@@ -366,19 +366,18 @@ class Solver():
                     self.predictions = np.vstack([self.predictions, self.yhat_idx.detach().cpu().numpy()]) if self.predictions.size else self.yhat_idx.detach().cpu().numpy()
                     self.labels = np.append(self.labels, batch_y.detach().cpu().numpy())
 
-            self.metric = self.evaluate(self.predictions, self.labels)
+            self.metric = evaluate(self.predictions, self.labels)
 
             if callable(track):
                 track("evaluation")
 
             return self.metric
     
-    def evaluate(self, predictions: np.array, labels: np.array, mode: str = "top-k"):
-        """ Function to calculate the evaluation metric.
-
+def evaluate(predictions: np.array, labels: np.array, mode: str = "top-k"):
+    """ Function to calculate the evaluation metric.
             Parameters:
-                predictions: np.array
-                    Array with the predicted values.
+            predictions: np.array
+                    Array with the predicted values, sorted by its probability
                 labels: np.array
                     Corresponding ground truth for the predicted values.
                 mode: str (not used yet)
@@ -387,16 +386,16 @@ class Solver():
                 tuple: tuple containing the evaluation metrics.
         """
 
-        k = 1  # Top-k
-        correct = np.sum([l in pred for l, pred in zip(labels, np.asarray(predictions)[:,:k])])
-        top1 = (correct/len(labels))
+    k = 1  # Top-k
+    correct = np.sum([l in pred for l, pred in zip(labels, np.asarray(predictions)[:,:k])])
+    top1 = (correct/len(labels))
 
-        k = 5  # Top-k
-        correct = np.sum([l in pred for l, pred in zip(labels, np.asarray(predictions)[:,:k])])
-        top5 = (correct/len(labels))
+    k = 5  # Top-k
+    correct = np.sum([l in pred for l, pred in zip(labels, np.asarray(predictions)[:,:k])])
+    top5 = (correct/len(labels))
 
-        # accuracy 
-        return top1, top5
+    # accuracy 
+    return top1, top5
     
     # def evaluate_embedding(embeddings, labels, search=True):
     #     labels = preprocessing.LabelEncoder().fit_transform(labels)

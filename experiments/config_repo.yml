@@ -94,34 +94,76 @@ complex_encoder:
     path: ./content/
     verbose: True
   loader:
-    batch_size: 64
+    batch_size: 128
   data_split:
-    lim: 500
+    lim: 5000
   emb_tracking: True
   encoder: 
     # [(c_in, c_out, spec_out, out, kernel)]
-    architecture: [ 
-      [2,    32,  64,  64, 16],
-      [64,   64,  64,  64, 16],
-      [64,   64, 128, 128, 16],
-      [128, 128, 256, 256, 16]
-    ] 
+    architecture: [
+      [2, 32, 64, 64, 9],
+      [64, 64, 128, 128, 9],
+      [128, 128, 256, 256, 9]
+   ]
   encoder_training:
     verbose: True
-    n_epochs: 5
+    n_epochs: 50
     optimizer_name: SGD
     optimizer:
-      lr: 0.2
+      lr: 0.01
       momentum: 0.9
     gradient_clipping: 0.2
   classifier: 
-    in_dim: 512
+    in_dim: 256
     hidden_layers: [128, 512, 256]
   classifier_training:
     verbose: True
-    n_epochs: 5
+    n_epochs: 50
+    optimizer_name: SGD
+    optimizer:
+      lr: 0.001
+      momentum: 0.9
+    gradient_clipping: 0.2
+  
+small_complex_encoder:
+  name: shuffle
+  data:
+    name: kinetic_skeleton_5000
+    path: ./content/
+    verbose: True
+  loader:
+    batch_size: 16
+    shuffle: True
+  stratify:
+    num: 5
+    lim: 500
+  emb_tracking: True
+  encoder:
+    architecture: [
+      [2, 32, 32, 32, 9],
+      [32, 32, 32, 32, 9],
+      [32, 32, 64, 128, 9],
+   ]
+  encoder_training:
+    verbose: True
+    n_epochs: 50
     optimizer_name: SGD
     optimizer:
       lr: 0.1
+    gradient_clipping: 0.5
+
+evaluate_experiment:
+  exp:
+    path: /home/stud/huthmacher/Temporal-Info-Graph/output/18012021_2208_TIG_complex_encoder_discriminatorFF-batch64-100k/
+  mode: sklearn
+  classifier: 
+    in_dim: 256
+    hidden_layers: [128, 512, 256]
+  classifier_training:
+    verbose: True
+    n_epochs: 50
+    optimizer_name: SGD
+    optimizer:
+      lr: 0.001
       momentum: 0.9
     gradient_clipping: 0.2

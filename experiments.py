@@ -5,6 +5,9 @@ import io
 import json
 import os
 import pprint
+from datetime import datetime
+from tqdm import tqdm
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -36,6 +39,7 @@ from model import MLP, Solver, TemporalInfoGraph
 from tracker import Tracker
 from evaluation import svc_classify, mlp_classify, randomforest_classify
 from visualization.plots import plot_emb, plot_curve
+from visualization import create_gif
 
 #### Default Experiment Configuration ####
 default = {
@@ -160,7 +164,10 @@ def experiment(tracker: Tracker, config: dict):
 
     return run
 
-
+##########################################################
+# API to easily access experiment artifacts on the local #
+# machine as well as on the slurm cluster (remote)       #
+##########################################################
 class Experiment():
     """ Experiment class to easy access output files from an experiment run in an
         object oriented matter.
@@ -176,6 +183,7 @@ class Experiment():
         self.path = path
         self.folder =  os.path.normpath(self.path).split(os.sep)[0]
         self.name = os.path.normpath(self.path).split(os.sep)[-1]
+        self.ssh = ssh
         if ssh is None:
             try:
                 data = np.load(f"{path}embeddings.npz")
@@ -198,7 +206,7 @@ class Experiment():
                 self.clf_train_loss = np.load(f"{path}TIG_MLP.train_losses.npy")
                 self.clf_val_loss = np.load(f"{path}TIG_MLP.val_losses.npy")
                 self.clf_train_metrics = np.load(f"{path}TIG_MLP.train.metrics.npy")
-                self.clf_val_metrics = np.load(f"{path}TIG_MLP.train.metrics.npy")
+                self.clf_val_metrics = np.load(f"{path}TIG_MLP.val.metrics.npy")
             except:  #pylint: disable=bare-except
                 # Not each experiement has  a classifier
                 pass
@@ -248,11 +256,7 @@ class Experiment():
                 pass
 
             #### TIG Model/Losses/Metric ####
-            try:
-                f = sftp.open(f"{path}TIG_MLP.pt")
-                f.prefetch()
-                f = f.read()
-                self.classifier = torch.load(io.BytesIO(f)).cuda()
+            try:                
                 f = sftp.open(f"{path}TIG_MLP.train_losses.npy")
                 f.prefetch()
                 f = f.read()
@@ -269,16 +273,16 @@ class Experiment():
                 f.prefetch()
                 f = f.read()
                 self.clf_val_metrics = np.load(io.BytesIO(f))
+                f = sftp.open(f"{path}TIG_MLP.pt")
+                f.prefetch()
+                f = f.read()
+                self.classifier = torch.load(io.BytesIO(f)).cuda()
             except:  #pylint: disable=bare-except
                 # Not each experiement has  a classifier
                 pass
             
             #### TIG Model/Losses ####
-            try:
-                f = sftp.open(f"{path}TIG_.pt")
-                f.prefetch()
-                f = f.read()
-                self.tig = torch.load(io.BytesIO(f)).cuda()
+            try:                
                 f = sftp.open(f"{path}TIG_train_losses.npy")
                 f.prefetch()    
                 f = f.read()
@@ -287,6 +291,10 @@ class Experiment():
                 f.prefetch()
                 f = f.read()
                 self.tig_val_loss = np.load(io.BytesIO(f))
+                f = sftp.open(f"{path}TIG_.pt")
+                f.prefetch()
+                f = f.read()
+                self.tig = torch.load(io.BytesIO(f)).cuda()
             except:  #pylint: disable=bare-except
                 pass
                 
@@ -370,10 +378,18 @@ class Experiment():
         """
         """
 
+        if "start_time" in self.config:
+            runtime = str(datetime.now() -
+                          datetime.strptime(self.config["start_time"],"%d.%m.%Y %H:%M:%S"))
+        else:
+            runtime = "Not available!"
+
         representation = f"Experiment ({os.path.normpath(self.path).split(os.sep)[-1]})\n"
+        representation += f"--- Epoch: {self.tig_train_loss.shape[0] if hasattr(self, 'tig_train_loss') else 'Loss not available.'}\n"
         representation += f"--- Duration: {self.config['duration'] if 'duration' in self.config else 'Not Finished'}\n"
+        representation += f"--- Runtime: {runtime}\n"
         representation += f"--- Batchsize: {self.config['loader']['batch_size'] if 'loader' in self.config else 'Config Incomplete'}\n"
-        representation += f"--- Batchsize: {self.config['encoder_training']['optimizer']['lr'] if 'encoder_training' in self.config else 'Config Incomplete'}\n"
+        representation += f"--- Learning Rate: {self.config['encoder_training']['optimizer']['lr'] if 'encoder_training' in self.config else 'Config Incomplete'}\n"
         representation += f"--- Training set: {self.config['train_length'] if 'train_length' in self.config else 'Config Incomplete'}\n"
         representation += f"--- Validation set: {self.config['val_length'] if 'val_length' in self.config else 'Config Incomplete'}\n"
         representation += f"--- Last JSD Loss (Train): {self.tig_train_loss[-1] if hasattr(self, 'tig_train_loss') else 'Not Finished'}\n"
@@ -470,8 +486,10 @@ class Experiment():
 
                 args = {
                     "data": {
-                        "MLP Top-1 Acc.": np.array(self.clf_train_metrics)[:, 0],
-                        "MLP Top-5 Acc.": np.array(self.clf_val_metrics)[:, 1],
+                        "MLP Top-1 Acc. (Train)": np.array(self.clf_train_metrics)[:, 0],
+                        "MLP Top-5 Acc. (Train)": np.array(self.clf_train_metrics)[:, 1],
+                        "MLP Top-1 Acc. (Val)": np.array(self.clf_val_metrics)[:, 0],
+                        "MLP Top-5 Acc. (Val)": np.array(self.clf_val_metrics)[:, 1],
                         }
                     }
         except:
@@ -487,7 +505,7 @@ class Experiment():
         return plot_emb(self.emb_x, self.emb_y)
 
     ### Experiment Evaluation ####
-    def evaluate_emb(self, plot: bool = False):
+    def evaluate_emb(self, plot: bool = False, which: [str] = None):
         """ Evaluate the quality of the embeddings by testing different classifier.
 
             Paramters:
@@ -495,78 +513,116 @@ class Experiment():
                     If true the embeddings with their predictions are plotted.
         """
         if hasattr(self, "clf_val_metrics"):
-            self.log.info(f"(Pipeline) MLP Accuracy: {np.max(self.clf_val_metrics)}")
+            self.log.info(f"(Pipeline) MLP Accuracy: {np.max(self.clf_val_metrics, axis=0)}")
     
         #### SVM Classifier ####
-        if hasattr(self, "log"):
-            self.log.info("Run SVM...")
-        else:
-            print("Run SVM...")
-        acc = svc_classify(self.emb_x, self.emb_y, search=True)
+        if which is None or "svm" in which:
+            if hasattr(self, "log"):
+                self.log.info("Run SVM...")
+            else:
+                print("Run SVM...")
+            acc = svc_classify(self.emb_x, self.emb_y, search=True)
 
-        if plot:
-            pca = PCA(n_components=2, random_state=123)
-            x = pca.fit_transform(self.emb_x)
+            if plot:
+                pca = PCA(n_components=2, random_state=123)
+                x = pca.fit_transform(self.emb_x)
 
-            _, ax = plt.subplots(figsize=(5,5))
-            ax.set_title(f"SVM - Classifier (Avg. accuracy: {acc})")
-            ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
-                        cmap=sns.color_palette("Spectral", as_cmap=True))
-            ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
-                        cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
+                _, ax = plt.subplots(figsize=(5,5))
+                ax.set_title(f"SVM - Classifier (Avg. accuracy: {acc})")
+                ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
+                            cmap=sns.color_palette("Spectral", as_cmap=True))
+                ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
+                            cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
 
-        if hasattr(self, "log"):
-            self.log.info(f"SVM Avg. Accuracy (top-1): {acc}")
-        else:
-            print(f"SVM Avg. Accuracy (top-1): {acc}")
-        
+            if hasattr(self, "log"):
+                self.log.info(f"SVM Avg. Accuracy (top-1): {acc}")
+            else:
+                print(f"SVM Avg. Accuracy (top-1): {acc}")
+            
+            if self.ssh is not True:
+                f = Path(f"{self.path}sklearn.evaluation.txt")
+                f = open(f"{self.path}sklearn.evaluation.txt", "a")
+                f.write(f"SVM Avg. Accuracy (top-1): {acc}\n")
+                f.close()
 
         #### MLP Classifier ####
-        if hasattr(self, "log"):
-            self.log.info("Run MLP...")
-        else:
-            print("Run MLP...")
-        acc = mlp_classify(x=self.emb_x, y=self.emb_y, search=True)
+        if which is None or "mlp" in which:
+            if hasattr(self, "log"):
+                self.log.info("Run MLP...")
+            else:
+                print("Run MLP...")
+            acc = mlp_classify(x=self.emb_x, y=self.emb_y, search=True)
 
-        if plot:
-            pca = PCA(n_components=2, random_state=123)
-            x = pca.fit_transform(self.emb_x)
+            if plot:
+                pca = PCA(n_components=2, random_state=123)
+                x = pca.fit_transform(self.emb_x)
 
-            _, ax = plt.subplots(figsize=(5,5))
-            ax.set_title(f"MLP (Sklearn) - Classifier (Avg. accuracy: {acc})")
-            ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
-                        cmap=sns.color_palette("Spectral", as_cmap=True))
-            ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
-                        cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
+                _, ax = plt.subplots(figsize=(5,5))
+                ax.set_title(f"MLP (Sklearn) - Classifier (Avg. accuracy: {acc})")
+                ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
+                            cmap=sns.color_palette("Spectral", as_cmap=True))
+                ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
+                            cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
 
-        if hasattr(self, "log"):
-            self.log.info(f"MLP Avg. Accuracy (top-1): {acc}")
-        else:
-            print(f"MLP Avg. Accuracy (top-1): {acc}")
+            if hasattr(self, "log"):
+                self.log.info(f"MLP Avg. Accuracy (top-1): {acc}")
+            else:
+                print(f"MLP Avg. Accuracy (top-1): {acc}")
+            
+            if self.ssh is not True:
+                f = Path(f"{self.path}sklearn.evaluation.txt")
+                f = open(f"{self.path}sklearn.evaluation.txt", "a")
+                f.write(f"MLP Avg. Accuracy (top-1): {acc}\n")
+                f.close()
 
         #### Random Forest Classifier ####
-        if hasattr(self, "log"):
-            self.log.info("Run Random Forest ...")
-        else:
-            print("Run Random Forest ...")
-        acc = randomforest_classify(x=self.emb_x, y=self.emb_y, search=True)
+        if which is None or "random forest" in which:
+            if hasattr(self, "log"):
+                self.log.info("Run Random Forest ...")
+            else:
+                print("Run Random Forest ...")
+            acc = randomforest_classify(x=self.emb_x, y=self.emb_y, search=True)
 
-        if plot:
-            pca = PCA(n_components=2, random_state=123)
-            x = pca.fit_transform(self.emb_x)
+            if plot:
+                pca = PCA(n_components=2, random_state=123)
+                x = pca.fit_transform(self.emb_x)
 
-            _, ax = plt.subplots(figsize=(5,5))
-            ax.set_title(f"Random Forest - Classifier (Avg. accuracy: {acc})")
-            ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
-                        cmap=sns.color_palette("Spectral", as_cmap=True))
-            ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
-                        cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
+                _, ax = plt.subplots(figsize=(5,5))
+                ax.set_title(f"Random Forest - Classifier (Avg. accuracy: {acc})")
+                ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
+                            cmap=sns.color_palette("Spectral", as_cmap=True))
+                ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
+                            cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
 
-        if hasattr(self, "log"):
-            self.log.info(f"Random Forest Avg. Accuracy (top-1): {acc}")
-        else:
-            print(f"Random Forest Avg. Accuracy (top-1): {acc}")
+            if hasattr(self, "log"):
+                self.log.info(f"Random Forest Avg. Accuracy (top-1): {acc}")
+            else:
+                print(f"Random Forest Avg. Accuracy (top-1): {acc}")
+            
+            if self.ssh is not True:
+                f = Path(f"{self.path}sklearn.evaluation.txt")
+                f = open(f"{self.path}sklearn.evaluation.txt", "a")
+                f.write(f"Random Forest Avg. Accuracy (top-1): {acc}\n")
+                f.close()
 
+    def plot_emb_3D(self, gif_path: str = None):
+        """
+        """
+        pca = PCA(n_components=3, random_state=123)
+        x = pca.fit_transform(self.emb_x)
+
+        for angle in tqdm(range(0, 360, 2)):
+
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
+
+            ax.scatter(x[:, 0], x[:, 1], x[:, 2],  c=self.emb_y.astype(int), cmap=sns.color_palette("Spectral", as_cmap=True))
+            ax.view_init(10, angle)
+
+            if gif_path is not None:
+                create_gif(fig, path=gif_path, name="embeddings_3d.gif")
+            else:
+                break
 
 def connect_to_slurm():
     """

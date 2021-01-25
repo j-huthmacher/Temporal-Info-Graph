@@ -21,6 +21,8 @@ import torch.nn as nn
 
 from sklearn.decomposition import PCA
 
+from model.solver import evaluate  
+
 
 def mlp_classify(x,y, search=False, ret_pred=False):
     n_splits = min(min(10, x.shape[0]), min(np.unique(y, return_counts=True)[1]))
@@ -39,10 +41,11 @@ def mlp_classify(x,y, search=False, ret_pred=False):
         else:
             classifier = MLPClassifier()
         classifier.fit(x_train, y_train)
-        yhat = classifier.predict(x_test)
-        accuracies.append(accuracy_score(y_test, yhat))
+        yhat = classifier.predict_proba(x_test)
+        # accuracies.append(accuracy_score(y_test, yhat))
         # accuracies.append((top_k_accuracy_score(y_test, yhat, k = 1),
                         #    top_k_accuracy_score(y_test, yhat, k = 5)))
+        accuracies.append(evaluate(np.argsort(yhat, axis=1), y_test))
 
     if ret_pred:
         return classifier.predict(x), np.mean(np.asarray(accuracies), axis=0)
@@ -57,7 +60,7 @@ def svc_classify(x, y, search, ret_pred=False):
     n_splits = min(min(10, x.shape[0]), min(np.unique(y, return_counts=True)[1]))
     n_splits = max(2, n_splits)
 
-    kf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=None)
+    kf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=1)
     accuracies = []
     for train_index, test_index in kf.split(x, y):
 
@@ -65,15 +68,16 @@ def svc_classify(x, y, search, ret_pred=False):
         y_train, y_test = y[train_index], y[test_index]
         # x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1)
         if search:
-            params = {'C':[0.001, 0.01,0.1,1,10,100,1000]}
-            classifier = GridSearchCV(SVC(), params, cv=n_splits, scoring='accuracy', verbose=0)
+            params = {'C':[0.001, 0.01, 0.1, 1, 10, 100, 1000]}
+            classifier = GridSearchCV(SVC(probability=True), params, cv=n_splits, scoring='accuracy', verbose=0)
         else:
-            classifier = SVC(C=10)
+            classifier = SVC(C=10, probability=True)
         classifier.fit(x_train, y_train)
-        yhat = classifier.predict(x_test)
-        accuracies.append(accuracy_score(y_test, yhat))
-        # accuracies.append((top_k_accuracy_score(y_test, yhat, k = 1),
-        #                    top_k_accuracy_score(y_test, yhat, k = 5)))
+        # yhat = classifier.predict(x_test)
+        yhat = classifier.predict_proba(x_test)
+        # accuracies.append(accuracy_score(y_test, yhat))
+
+        accuracies.append(evaluate(np.argsort(yhat, axis=1), y_test))
 
     if ret_pred:
         return classifier.predict(x), np.mean(np.asarray(accuracies), axis=0)

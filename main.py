@@ -18,6 +18,7 @@ from tracker import Tracker
 from experiments import  experiment
 from config.config import log
 from data.tig_data_set import TIGDataset
+from experiments import Experiment
 
 #### Set Up CLI ####
 parser = argparse.ArgumentParser(prog='tig', description='Temporal Info Graph')
@@ -31,6 +32,8 @@ parser.add_argument('--tracking', dest='tracking', default="remote",
                     help='[remote, local], default: remote')
 parser.add_argument('--train', dest='train', action='store_true',
                     help='Flag to select trainings mode.')
+parser.add_argument('--eval', dest='eval', action='store_true',
+                    help='Flag to select evaluation mode.')
 parser.add_argument('--downstream', dest='downstream', action='store_true',
                     help='Flag to determine if the downstream training should be executed.')
 parser.add_argument('--disable_local_store', dest='disable_local_store', action='store_true',
@@ -129,6 +132,37 @@ if args.train:
                 break
             except:
                 pass
+
+elif args.eval:
+    torch.cuda.empty_cache()
+
+    name = args.name
+    config = {}
+
+    #### Load Configuration ####
+    if args.config is not None:
+        if ".yml" in args.config or ".yaml" in args.config:
+            with open(args.config) as file:
+                name = args.name
+                config = yaml.load(file, Loader=yaml.FullLoader)
+        elif ".json" in args.config:
+            with open(args.config) as file:
+                name = args.name
+                config = json.load(file)
+        else:
+            with open("./experiments/config_repo.yml") as file:
+                name += f"_{args.config}"
+                config = yaml.load(file, Loader=yaml.FullLoader)[args.config]
+    else:
+        with open("./experiments/config_repo.yml") as file:
+            name += "_standard"
+            config = yaml.load(file, Loader=yaml.FullLoader)["standard"]
+
+    exp = Experiment(**config["exp"])
+
+    if "mode" in config and config["mode"] == "sklearn":
+        exp.evaluate_emb()
+
 
 elif args.prep_data:
     # pass

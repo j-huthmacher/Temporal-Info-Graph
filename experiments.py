@@ -18,6 +18,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.decomposition import PCA
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from torchsummary import summary
 
 from PIL import Image
 import io
@@ -112,6 +113,10 @@ def experiment(tracker: Tracker, config: dict):
 
         #### TIG Set Up ####
         tig = TemporalInfoGraph(**config["encoder"], A=KINECT_ADJACENCY).cuda()
+
+        if "print_summary" in config and config["print_summary"]:
+            summary(tig, input_size=(2, 36, 300), batch_size=config["loader"]["batch_size"])
+
         solver = Solver(tig, loader)
 
         #### Tracking ####
@@ -142,7 +147,7 @@ def experiment(tracker: Tracker, config: dict):
 
                 #### Local Embedding Tracking ####
                 np.savez(tracker.local_path+"embeddings", x=emb_x, y=emb_y)
-        
+
         if not "classifier" in config or not isinstance(config["classifier"], dict):
             # If the experiment only trains the encoder
             return
@@ -202,7 +207,7 @@ class Experiment():
             
             #### TIG Model/Losses/Metric ####
             try:
-                self.classifier = torch.load(f"{path}TIG_MLP.pt").cuda()
+                self.classifier = torch.load(f"{path}TIG_MLP.pt")#.cuda()
                 self.clf_train_loss = np.load(f"{path}TIG_MLP.train_losses.npy")
                 self.clf_val_loss = np.load(f"{path}TIG_MLP.val_losses.npy")
                 self.clf_train_metrics = np.load(f"{path}TIG_MLP.train.metrics.npy")
@@ -215,7 +220,7 @@ class Experiment():
             try:
                 self.tig_train_loss = np.load(f"{path}TIG_train_losses.npy")
                 self.tig_val_loss = np.load(f"{path}TIG_val_losses.npy")
-                self.tig = torch.load(f"{path}TIG_.pt").cuda()
+                self.tig = torch.load(f"{path}TIG_.pt")#.cuda()
             except:  #pylint: disable=bare-except
                 pass
             
@@ -276,7 +281,7 @@ class Experiment():
                 f = sftp.open(f"{path}TIG_MLP.pt")
                 f.prefetch()
                 f = f.read()
-                self.classifier = torch.load(io.BytesIO(f)).cuda()
+                self.classifier = torch.load(io.BytesIO(f))#.cuda()
             except:  #pylint: disable=bare-except
                 # Not each experiement has  a classifier
                 pass
@@ -294,8 +299,9 @@ class Experiment():
                 f = sftp.open(f"{path}TIG_.pt")
                 f.prefetch()
                 f = f.read()
-                self.tig = torch.load(io.BytesIO(f)).cuda()
-            except:  #pylint: disable=bare-except
+                self.tig = torch.load(io.BytesIO(f))#.cuda()
+            except Exception as e:  #pylint: disable=bare-except
+                print("Exception (TIG)", e)
                 pass
                 
             #### TIG Train Metric ####
@@ -345,7 +351,6 @@ class Experiment():
         image = Image.open(io.BytesIO(self.img[name]))
         return image
 
-    @property
     def tig_input_shape(self, n_batches: int = 2, n_nodes: int = 36, n_times: int = 300):
         # (batch, features, nodes, time)
         return (n_batches,
@@ -413,10 +418,10 @@ class Experiment():
             writer.add_text("config", pprint.pformat(self.config, indent=1, width=80).replace("\n", "  \n").replace("     ", "&nbsp;"))
 
     #### Experiment Visualization ####
-    def plot_dash(self):
+    def plot_dash(self, figsize=(14, 7)):
         """
         """
-        fig = plt.figure(figsize=(14, 7), constrained_layout=True)
+        fig = plt.figure(figsize=figsize, constrained_layout=True)
         gs = fig.add_gridspec(4, 2)
 
         #### Embeddings ####
@@ -447,10 +452,11 @@ class Experiment():
         fig.suptitle(f"Experiment: {os.path.normpath(self.path).split(os.sep)[-1]}")
 
         return fig
-    
+
     def plot_curve(self, name="TIG.loss", ax = None):
         """
         """
+        args = None
         try:
             if name == "TIG.loss":
                 model_name = "TIG: "
@@ -461,7 +467,7 @@ class Experiment():
                         "TIG Val Loss (JSD MI)": self.tig_val_loss
                         }
                     }
-            elif name == "TIG.metric":
+            elif name == "TIG.metric"  and hasattr(self, "tig_train_metrics"):
                 model_name = "TIG: "
                 title = "Metric"
                 args = {
@@ -480,7 +486,7 @@ class Experiment():
                         "MLP Val Loss (JSD MI)": self.clf_val_loss
                         }
                     }
-            elif name == "MLP.metric":
+            elif name == "MLP.metric" and hasattr(self, "clf_val_metrics") and hasattr(self, "clf_train_metrics"):
                 model_name = "MLP: "
                 title = "Accuracy (Top-1, Top-5)"
 
@@ -488,16 +494,19 @@ class Experiment():
                     "data": {
                         "MLP Top-1 Acc. (Train)": np.array(self.clf_train_metrics)[:, 0],
                         "MLP Top-5 Acc. (Train)": np.array(self.clf_train_metrics)[:, 1],
-                        "MLP Top-1 Acc. (Val)": np.array(self.clf_val_metrics)[:, 0],
-                        "MLP Top-5 Acc. (Val)": np.array(self.clf_val_metrics)[:, 1],
+                        
                         }
                     }
-        except:
+                if hasattr(self, "clf_val_metrics"):
+                    args["date"]["MLP Top-1 Acc. (Val)"]  = np.array(self.clf_val_metrics)[:, 0]
+                    args["date"]["MLP Top-5 Acc. (Val)"]  = np.array(self.clf_val_metrics)[:, 1],
+        except Exception as e:
+            print(e)
             if ax is not None:
                 ax.axis('off')
             return None
-
-        return plot_curve(**args, title=title, model_name=model_name, ax=ax)
+        if args is not None:
+            return plot_curve(**args, title=title, model_name=model_name, ax=ax)
 
     def plot_emb(self):
         """

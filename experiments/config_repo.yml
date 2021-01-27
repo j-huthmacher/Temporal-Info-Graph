@@ -90,20 +90,25 @@ standard_stratified2:
 
 complex_encoder:
   data:
-    name: kinetic_skeleton
+    name: kinetic_skeleton_5000
     path: ./content/
     verbose: True
   loader:
-    batch_size: 128
+    batch_size: 256
   data_split:
-    lim: 5000
+    lim: 20000
   emb_tracking: True
+  print_summary: True
   encoder: 
     # [(c_in, c_out, spec_out, out, kernel)]
     architecture: [
-      [2, 32, 64, 64, 9],
-      [64, 64, 128, 128, 9],
-      [128, 128, 256, 256, 9]
+      [2, 32, 64, 64, 16],
+      [64, 64, 64, 64, 16],
+      [64, 64, 64, 64, 16],
+      [64, 64, 128, 128, 16],
+      [128, 128, 256, 256, 16],
+      [256, 256, 256, 256, 16],
+      [256, 256, 256, 256, 16]
    ]
   encoder_training:
     verbose: True
@@ -140,9 +145,11 @@ small_complex_encoder:
   emb_tracking: True
   encoder:
     architecture: [
-      [2, 32, 32, 32, 9],
-      [32, 32, 32, 32, 9],
-      [32, 32, 64, 128, 9],
+      [2, 32, 64, 64, 16],
+      [64, 64, 64, 64, 16],
+      [64, 64, 64, 64, 16],
+      [64, 64, 128, 128, 16],
+      [128, 128, 256, 256, 16]
    ]
   encoder_training:
     verbose: True
@@ -154,7 +161,7 @@ small_complex_encoder:
 
 evaluate_experiment:
   exp:
-    path: /home/stud/huthmacher/Temporal-Info-Graph/output/18012021_2208_TIG_complex_encoder_discriminatorFF-batch64-100k/
+    path: ./output/20012021_1303_debug_small_complex_encoder/
   mode: sklearn
   classifier: 
     in_dim: 256

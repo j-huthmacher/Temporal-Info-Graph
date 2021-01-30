@@ -161,16 +161,54 @@ class TestModel(unittest.TestCase):
 
         #### Check Global Repr ####
         self.assertTrue(torch.allclose(gbl.detach(), torch.tensor([
-            [0.5572025776,  0.1188173592,  0.9377288818,  0.0637653470,
-             0.1603372097, -0.4778968990, -0.2594975829]
+            [0.5525305271,  0.1178621352,  0.9339270592,  0.0617463589,
+             0.1626448333, -0.4789645970, -0.2577761412]
         ]).type(torch.float32)))
 
         #### Check Local Repr ####
         self.assertTrue(torch.allclose(lcl.detach(),
-                                       torch.tensor([[[-0.4365337193,  0.3847121894],
-                                                      [0.6409751177,  1.2326602936],
-                                                      [-0.2903251648, -0.7645230293],
-                                                      [0.3139403164, -0.2527847290],
-                                                      [0.3143166900,  0.2586027384],
-                                                      [-0.7053597569, 0.4332174063],
-                                                      [-0.7316774726,  1.0937972069]]]).type(torch.float32)))
+                                       torch.tensor([[[-0.4371549487,  0.3847233951],
+                                                      [0.6391321421,  1.2286182642],
+                                                      [-0.2881792188, -
+                                                          0.7627856731],
+                                                      [0.3141667843, -
+                                                          0.2593720555],
+                                                      [0.3146840930,  0.2644939125],
+                                                      [-0.7058595419,
+                                                          0.4369351864],
+                                                      [-0.7328739762,  1.1063418388]]]).type(torch.float32)))
+
+    def test_tig_res_e_weights(self):
+        """
+        """
+        X = torch.tensor([[
+            [
+                [1, 2, 1, 1],  # f1, n1 , t1 and t2 and t3 and t4
+                [3, 4, 1, 1],  # f1, n2 , t1 and t2 and t3 and t4
+                [2, 1, 1, 1]],  # f1, n3 , t1 and t2 and t3 and t4
+            [
+                [2, 2, 1, 1],  # f2, n1 , t1 and t2 and t3 and t4
+                [2, 2, 1, 1],  # f2, n2 , t1 and t2 and t3 and t4
+                [2, 4, 1, 1]]  # f2, n3 , t1 and t2 and t3 and t4
+        ]]).type('torch.FloatTensor').cpu()
+
+        A = torch.tensor([
+            [0, 1, 0],
+            [1, 0, 1],
+            [0, 1, 0]
+        ]).type('torch.FloatTensor')
+
+        # (c_in, c_out, spec_out, out, kernel)
+        architecture = [
+            (2, 6, 9, 7, 2)
+        ]
+        tig = TemporalInfoGraph(architecture=architecture, A=A, residual=True, edge_weights=True)
+
+        gbl, lcl = tig(X)
+        self.assertTrue(gbl.shape, (2, 7))  # (num_graphs, emb_dim)
+        # (num_graphs, emb_dim, num_nodes)
+        self.assertTrue(lcl.shape, (2, 7, 3))
+
+        # torch.set_printoptions(precision=10, sci_mode=False)
+        # print(lcl.detach())
+        # print(gbl.detach())

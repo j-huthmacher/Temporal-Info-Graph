@@ -245,7 +245,8 @@ class TemporalInfoGraph(nn.Module):
 
     def __init__(self, dim_in: tuple = None, architecture: [tuple] = [(2, 32, 32, 32, 32)],
                  activation: str = "leakyReLU", batch_norm: bool = True,
-                 A: torch.Tensor = None, discriminator_layer: bool = True, residual: bool = False):
+                 A: torch.Tensor = None, discriminator_layer: bool = True, residual: bool = False,
+                 edge_weights: bool = False):
         """ Initilization of the TIG model.
 
             Parameter:
@@ -274,8 +275,12 @@ class TemporalInfoGraph(nn.Module):
         super().__init__()
 
         #### Model Creation #####
-        layers = []
+        self.layers = []
+        self.edge_weights = nn.ParameterList()
         self.embedding_dim = architecture[-1][3]
+        
+        if A is not None:
+            self.register_buffer('A', A)
 
         #### Initial Data Normalization ####
         if batch_norm and A is not None:
@@ -283,32 +288,36 @@ class TemporalInfoGraph(nn.Module):
             self.data_norm = nn.BatchNorm1d(architecture[0][0] * A.shape[0])
 
         for (c_in, c_out, spec_out, out, kernel) in architecture:
-            layers.append(TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel, bn_in=False))  # in_dim (batch, features, nodes, time)
-            layers.append(SpectralConvolution(c_in=c_out, c_out=spec_out, A=A))  # in_dim (batch, nodes, time, features)
-            layers.append(TemporalConvolution(c_in=spec_out, c_out=out, kernel=kernel, bn_in=False))  # in_dim (batch, nodes, time, features)
-            
-            # if (c_in != out) and residual:
-            #     self.residual = nn.Sequential(
-            #         nn.Conv2d(c_in, out, kernel_size=1),
-            #         nn.BatchNorm2d(out),
-            #     )
+            tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel, bn_in=False)
+            specConv = SpectralConvolution(c_in=c_out, c_out=spec_out)
+            tempConv2 = TemporalConvolution(c_in=spec_out, c_out=out, kernel=kernel, bn_in=False)
+
+            if (c_in != out) and residual:
+                residual = nn.Sequential(nn.Conv2d(c_in, out, kernel_size=1), nn.BatchNorm2d(out))
+                self.layers.append([residual, tempConv1, specConv, tempConv2])
+            else:
+                # Build up sandwich architecture
+                self.layers.append([tempConv1, specConv, tempConv2])
+
+            #### Edge Paramter ####
+            if edge_weights:
+                self.edge_weights.append(nn.Parameter(torch.ones(self.A.size())))
+            else:
+                self.edge_weights.append(nn.Parameter(torch.ones(self.A.size()), requires_grad=False))
 
             #### ACTIVATION #####
             if activation == "leakyReLU":
-                layers.append(nn.LeakyReLU())
+                self.layers.append(nn.LeakyReLU())
             elif activation == "ReLU":
-                layers.append(nn.ReLU())
-
+                self.layers.append(nn.ReLU())
 
         #### Discriminator FF ####
         self.discriminator_layer = discriminator_layer
         if discriminator_layer:
             self.global_ff = FF(self.embedding_dim)
             self.local_ff = FF(self.embedding_dim)
-        # self.global_ff = nn.Identity(self.embedding_dim)  
-        # self.local_ff = nn.Identity(self.embedding_dim)  # To test if reshaping works to 
 
-        self.model = nn.Sequential(*layers)
+        # self.model = nn.ModuleList(layers)
 
     @property
     def device(self):
@@ -349,7 +358,20 @@ class TemporalInfoGraph(nn.Module):
             # Convert back to original format
             X = X.reshape(N, C, V, T)
 
-        Z = self.model(X)
+        for layer, e_weight in zip(self.layers, self.edge_weights):
+            tempConv1, specConv, tempConv2 = layer[-3], layer[-2], layer[-1]
+
+            if len(layer) == 4:
+                resLayer = layer[0]
+                res = resLayer(X)
+            else:
+                res = 0
+
+            X = tempConv1(X)
+            X = specConv(X, self.A)
+            X = tempConv2(X)
+            # Z = X + res
+            Z = X
 
         Z = Z.mean(dim=2)
         

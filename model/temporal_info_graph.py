@@ -71,7 +71,7 @@ class TemporalConvolution(nn.Module):
             self.kernel = (1, self.kernel)
 
         #### Padding for Temporal Dependency #####
-        padding = (0, (self.kernel[1] - 1) // 2)
+        padding = ((self.kernel[0] - 1) // 2, 0)
 
         self.conv = nn.Conv2d(self.c_in,
                               self.c_out,
@@ -280,7 +280,7 @@ class TemporalInfoGraph(nn.Module):
         self.embedding_dim = architecture[-1][3]
         
         if A is not None:
-            self.register_buffer('A', A)
+            self.register_buffer('A', torch.tensor(A))
 
         #### Initial Data Normalization ####
         if batch_norm and A is not None:
@@ -292,12 +292,14 @@ class TemporalInfoGraph(nn.Module):
             specConv = SpectralConvolution(c_in=c_out, c_out=spec_out)
             tempConv2 = TemporalConvolution(c_in=spec_out, c_out=out, kernel=kernel, bn_in=False)
 
+            #### Residual Layer ####
             if (c_in != out) and residual:
-                residual = nn.Sequential(nn.Conv2d(c_in, out, kernel_size=1), nn.BatchNorm2d(out))
-                self.layers.append([residual, tempConv1, specConv, tempConv2])
+                residual = nn.Sequential(nn.Conv2d(c_in, out, kernel_size=(1, (kernel*2)-1)),
+                                         nn.BatchNorm2d(out))
+                self.layers.append(nn.Sequential(residual, tempConv1, specConv, tempConv2, nn.ReLU()))
             else:
                 # Build up sandwich architecture
-                self.layers.append([tempConv1, specConv, tempConv2])
+                self.layers.append(nn.Sequential(tempConv1, specConv, tempConv2, nn.ReLU()))
 
             #### Edge Paramter ####
             if edge_weights:
@@ -305,11 +307,11 @@ class TemporalInfoGraph(nn.Module):
             else:
                 self.edge_weights.append(nn.Parameter(torch.ones(self.A.size()), requires_grad=False))
 
-            #### ACTIVATION #####
-            if activation == "leakyReLU":
-                self.layers.append(nn.LeakyReLU())
-            elif activation == "ReLU":
-                self.layers.append(nn.ReLU())
+            # #### ACTIVATION #####
+            # if activation == "leakyReLU":
+            #     self.layers.append(nn.LeakyReLU())
+            # elif activation == "ReLU":
+            #     self.layers.append(nn.ReLU())
 
         #### Discriminator FF ####
         self.discriminator_layer = discriminator_layer
@@ -317,7 +319,7 @@ class TemporalInfoGraph(nn.Module):
             self.global_ff = FF(self.embedding_dim)
             self.local_ff = FF(self.embedding_dim)
 
-        # self.model = nn.ModuleList(layers)
+        self.model = nn.ModuleList(self.layers)
 
     @property
     def device(self):
@@ -358,23 +360,23 @@ class TemporalInfoGraph(nn.Module):
             # Convert back to original format
             X = X.reshape(N, C, V, T)
 
-        for layer, e_weight in zip(self.layers, self.edge_weights):
-            tempConv1, specConv, tempConv2 = layer[-3], layer[-2], layer[-1]
+        for layer, e_weight in zip(self.model, self.edge_weights):
+            # Expected layer = [(resLayer), tempConv1, specConv, tempConv2, activation]
+            tempConv1, specConv, tempConv2, activation = layer[-4], layer[-3], layer[-2], layer[-1]
 
-            if len(layer) == 4:
+            if len(layer) == 5:
                 resLayer = layer[0]
                 res = resLayer(X)
             else:
                 res = 0
 
-            X = tempConv1(X)
-            X = specConv(X, self.A)
-            X = tempConv2(X)
-            # Z = X + res
-            Z = X
+            X = tempConv1(X)  # (batch_size, ch_out, nodes, time)
+            X = specConv(X, self.A * e_weight) # (batch_size, ch_out, nodes, time)
+            X = tempConv2(X)  # (batch_size, ch_out, nodes, time)
+            X = activation(X + res)
 
-        Z = Z.mean(dim=2)
-        
+        Z = X.mean(dim=2)
+
         # Mean readout: Average each feature over all nodes --> dimension (features, 1)
         # Average over dimension 2, dim 2 corresponds to the nodes
         # (We want to aggregate the representation of each node!)

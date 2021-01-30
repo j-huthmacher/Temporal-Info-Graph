@@ -122,14 +122,13 @@ def experiment(tracker: Tracker, config: dict):
         #### Tracking ####
         tracker.track_traning(solver.train)(config["encoder_training"])
 
-        if config["emb_tracking"]:
+        if "emb_tracking" in config and config["emb_tracking"] != False:
             # Track the final embeddings after the TIG encoder is trained.
             emb_x = np.array([])
             emb_y = np.array([])
             with torch.no_grad():
                 for batch_x, batch_y in train_loader:
-                    pred, _ = solver.model(batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1),
-                                           torch.tensor(KINECT_ADJACENCY))
+                    pred, _ = solver.model(batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1))
                     if emb_x.size:
                         emb_x = np.concatenate(
                             [emb_x, pred.detach().cpu().numpy()])
@@ -191,7 +190,7 @@ class Experiment():
         self.ssh = ssh
         if ssh is None:
             try:
-                data = np.load(f"{path}embeddings.npz")
+                data = np.load(f"{path}embeddings.npz", allow_pickle=True)
                 emb_x = data["x"]
                 emb_y = data["y"]
 
@@ -201,8 +200,9 @@ class Experiment():
                 del data
                 del emb_x
                 del emb_y
-            except:  #pylint: disable=bare-except
+            except Exception as e:  #pylint: disable=bare-except
                 # Not each experiement has embeddings saved
+                print(e)
                 pass
             
             #### TIG Model/Losses/Metric ####
@@ -440,11 +440,14 @@ class Experiment():
             ax = fig.add_subplot(gs[3, 1])
             self.plot_curve(name="MLP.metric", ax = ax)
         else:
-            ax = fig.add_subplot(gs[2:, 1])
-            i = io.BytesIO(self.img["MLP.loss.metric.final.png"])
-            i = mpimg.imread(i, format='PNG')
+            try:
+                ax = fig.add_subplot(gs[2:, 1])
+                i = io.BytesIO(self.img["MLP.loss.metric.final.png"])
+                i = mpimg.imread(i, format='PNG')
 
-            ax.imshow(i, interpolation='none', aspect='auto')
+                ax.imshow(i, interpolation='none', aspect='auto')
+            except:
+                pass
             ax.axis('off')
 
         fig.tight_layout()
@@ -498,8 +501,8 @@ class Experiment():
                         }
                     }
                 if hasattr(self, "clf_val_metrics"):
-                    args["date"]["MLP Top-1 Acc. (Val)"]  = np.array(self.clf_val_metrics)[:, 0]
-                    args["date"]["MLP Top-5 Acc. (Val)"]  = np.array(self.clf_val_metrics)[:, 1],
+                    args["data"]["MLP Top-1 Acc. (Val)"]  = np.array(self.clf_val_metrics)[:, 0]
+                    args["data"]["MLP Top-5 Acc. (Val)"]  = np.array(self.clf_val_metrics)[:, 1]
         except Exception as e:
             print(e)
             if ax is not None:

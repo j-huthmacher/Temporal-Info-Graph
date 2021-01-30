@@ -479,7 +479,7 @@ class Tracker(object):
                     device = self.solver.encoder.device
                     self.solver.encoder = self.solver.encoder.cpu()
                     emb_x = self.solver.encoder(np.array(list(emb_x)).transpose(
-                        (0, 3, 2, 1)), KINECT_ADJACENCY)[0]
+                        (0, 3, 2, 1)))[0]
                     self.solver.encoder = self.solver.encoder.to(device)
 
                 args = {
@@ -583,7 +583,7 @@ class Tracker(object):
                     emb_x = np.array(
                         list(np.array(self.solver.train_loader.dataset, dtype=object)[:, 0]))
                     emb_x = self.solver.model(emb_x.transpose(
-                        (0, 3, 2, 1)), KINECT_ADJACENCY)[0]
+                        (0, 3, 2, 1)))[0]
                     self.solver.model = self.solver.model.to(device)
 
                 emb_y = np.array(
@@ -640,6 +640,12 @@ class Tracker(object):
                 name = "TIG.loss"
                 self.save_plot(fig, path, name)
 
+        #### Store Intermediate Embeddings ####
+        if ("emb_tracking" in self.cfg and type(self.cfg["emb_tracking"]) == int
+            and self.solver.epoch%self.cfg["emb_tracking"] == 0):
+            self.save_embeddings()
+
+
         #### Store Intermediate Values ####
         self.save_loss_metric()
 
@@ -657,16 +663,6 @@ class Tracker(object):
                 self.ex.log_scalar(f"{self.tag}train.top5",
                                    self.solver.train_metric[1])
 
-        # TODO: Check if this block is still needed.
-        # if self.solver.phase == "validation" and self.ex is not None:
-        #     self.ex.log_scalar(f"{self.tag}loss.epoch.val",
-        #                        self.solver.val_losses[self.solver.epoch], self.solver.epoch)
-
-        #     if hasattr(self.solver, "val_metric"):
-        #         self.ex.log_scalar(f"{self.tag}val.top1",
-        #                            self.solver.val_metric[0])
-        #         self.ex.log_scalar(f"{self.tag}val.top5",
-        #                            self.solver.val_metric[1])
 
     def track_train(self):
         """ Function that manage the tracking per trainings batch (called from the solver).
@@ -798,6 +794,17 @@ class Tracker(object):
         if hasattr(self.solver, "val_metric"):
             np.save(f"{self.local_path}/TIG_{self.tag}val.metrics.npy",
                     self.solver.val_metrics)
+
+    def save_embeddings(self):
+        with torch.no_grad():
+            device = self.solver.model.device
+            self.solver.model = self.solver.model.cpu()
+            emb_x = np.array(list(np.array(self.solver.train_loader.dataset, dtype=object)[:, 0]))
+            emb_x = self.solver.model(emb_x.transpose((0, 3, 2, 1)))[0]
+            self.solver.model = self.solver.model.to(device)
+
+        emb_y = np.array(self.solver.train_loader.dataset, dtype=object)[:, 1]
+        np.savez(f'{self.local_path}/embeddings', x=emb_x, y=emb_y)
 
     def track_locally(self):
         """ Function to track everything after the training/testing is done locally.

@@ -150,7 +150,7 @@ class TestModel(unittest.TestCase):
         ]
         tig = TemporalInfoGraph(architecture=architecture, A=A)
 
-        gbl, lcl = tig(X, A)
+        gbl, lcl = tig(X)
         self.assertTrue(gbl.shape, (2, 7))  # (num_graphs, emb_dim)
         # (num_graphs, emb_dim, num_nodes)
         self.assertTrue(lcl.shape, (2, 7, 3))
@@ -161,16 +161,16 @@ class TestModel(unittest.TestCase):
 
         #### Check Global Repr ####
         self.assertTrue(torch.allclose(gbl.detach(), torch.tensor([
-            [0.6561244726,  0.1320661604,  0.9772741795,  0.0804385245,
-             0.1481097639, -0.2970988154, -0.3897836506]
+            [0.5572025776,  0.1188173592,  0.9377288818,  0.0637653470,
+             0.1603372097, -0.4778968990, -0.2594975829]
         ]).type(torch.float32)))
 
         #### Check Local Repr ####
         self.assertTrue(torch.allclose(lcl.detach(),
-                                       torch.tensor([[[-0.3882373571,  0.1420675218],
-                                                      [0.8338274956,  0.7872511744],
-                                                      [-0.7091836929, -0.3200142682],
-                                                      [0.4084744155, -0.1346620917],
-                                                      [0.1362719387,  0.2326189876],
-                                                      [-0.9435855746, 0.3589177132],
-                                                      [-0.7894634604,  0.8177438378]]]).type(torch.float32)))
+                                       torch.tensor([[[-0.4365337193,  0.3847121894],
+                                                      [0.6409751177,  1.2326602936],
+                                                      [-0.2903251648, -0.7645230293],
+                                                      [0.3139403164, -0.2527847290],
+                                                      [0.3143166900,  0.2586027384],
+                                                      [-0.7053597569, 0.4332174063],
+                                                      [-0.7316774726,  1.0937972069]]]).type(torch.float32)))

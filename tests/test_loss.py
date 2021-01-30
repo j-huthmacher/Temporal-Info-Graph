@@ -9,7 +9,7 @@ import numpy as np
 
 # pylint: disable=import-error
 from model import jensen_shannon_mi
-from model.solver import Solver
+from model.solver import evaluate
 
 class TestEvaluation(unittest.TestCase):
     """ Test class for evaluation function.
@@ -25,12 +25,11 @@ class TestEvaluation(unittest.TestCase):
         ])
         labels = np.array([2,2,2])
 
-        solver = Solver(None, None)
-
-        top1, top5 = solver.evaluate(pred, labels)
+        top1, top5 = evaluate(pred, labels)
 
         self.assertEqual(top1, 2/3)
         self.assertEqual(top5, 3/3)
+
 
 class TestLoss(unittest.TestCase):
     """ Test class for TIG loss function.
@@ -38,6 +37,8 @@ class TestLoss(unittest.TestCase):
 
     def test_js_mi(self):
         """ Simple test for jensen-shannon MI loss.
+
+            Contains also a test for the pos./neg. sampling
         """
         #### Create Artificial Data ####
         enc_global = torch.tensor([

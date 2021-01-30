@@ -12,6 +12,7 @@ from sklearn.model_selection import GridSearchCV, KFold, StratifiedKFold
 from sklearn.model_selection import cross_val_score
 from sklearn.neural_network import MLPClassifier
 from sklearn.svm import SVC, LinearSVC
+from sklearn import preprocessing   
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -25,6 +26,8 @@ from model.solver import evaluate
 
 
 def mlp_classify(x,y, search=False, ret_pred=False):
+    le = preprocessing.LabelEncoder()
+    y = le.fit_transform(y)
     n_splits = min(min(10, x.shape[0]), min(np.unique(y, return_counts=True)[1]))
     n_splits = max(2, n_splits)
 
@@ -56,6 +59,8 @@ def mlp_classify(x,y, search=False, ret_pred=False):
 def svc_classify(x, y, search, ret_pred=False):
     """ From InfoGraph
     """
+    le = preprocessing.LabelEncoder()
+    y = le.fit_transform(y)
 
     n_splits = min(min(10, x.shape[0]), min(np.unique(y, return_counts=True)[1]))
     n_splits = max(2, n_splits)
@@ -87,6 +92,9 @@ def svc_classify(x, y, search, ret_pred=False):
 
 
 def randomforest_classify(x, y, search, ret_pred=False):
+    le = preprocessing.LabelEncoder()
+    y = le.fit_transform(y)
+
     n_splits = min(min(10, x.shape[0]), min(np.unique(y, return_counts=True)[1]))
     n_splits = max(2, n_splits)
 
@@ -114,6 +122,8 @@ def randomforest_classify(x, y, search, ret_pred=False):
 
 
 def linearsvc_classify(x, y, search, ret_pred = False):
+    le = preprocessing.LabelEncoder()
+    y = le.fit_transform(y)
 
     n_splits = min(min(10, x.shape[0]), y.shape[1])
     n_splits = max(2, n_splits)

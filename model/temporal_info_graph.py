@@ -75,7 +75,7 @@ class TemporalConvolution(nn.Module):
                               kernel_size=self.kernel,
                               bias=(self.weights == None))
 
-        if weights is not None:            
+        if weights is not None:
             self.conv.weight = torch.nn.Parameter(self.weights)
 
         #### REGULARIZATION ####
@@ -116,7 +116,7 @@ class TemporalConvolution(nn.Module):
             Return:
                 torch.Tensor: Dimension (batch, features, time, nodes)
         """
-        if self.bn_in:
+        if hasattr(self, "bn_in") and self.bn_in:
             X = self.bn1(X)
         X = self.conv(X)
         X = self.bn2(X)
@@ -279,14 +279,15 @@ class TemporalInfoGraph(nn.Module):
         layers = []
         self.embedding_dim = architecture[-1][3]
 
-        for (c_in, c_out, spec_out, out, kernel) in architecture:
-            #### REGULARIZATION ####
-            if batch_norm:
-                layers.append(nn.BatchNorm2d(c_in))
+        #### Initial Data Normalization ####
+        if batch_norm and A is not None:
+            # Features times nodes
+            self.data_norm = nn.BatchNorm1d(architecture[0][0] * A.shape[0])
 
-            layers.append(TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel, bn_in=False))
-            layers.append(SpectralConvolution(c_in=c_out, c_out=spec_out, A=A))
-            layers.append(TemporalConvolution(c_in=spec_out, c_out=out, kernel=kernel, bn_in=False))
+        for (c_in, c_out, spec_out, out, kernel) in architecture:
+            layers.append(TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel, bn_in=False))  # in_dim (batch, features, nodes, time)
+            layers.append(SpectralConvolution(c_in=c_out, c_out=spec_out, A=A))  # in_dim (batch, nodes, time, features)
+            layers.append(TemporalConvolution(c_in=spec_out, c_out=out, kernel=kernel, bn_in=False))  # in_dim (batch, nodes, time, features)
 
             #### ACTIVATION #####
             if activation == "leakyReLU":
@@ -311,7 +312,7 @@ class TemporalInfoGraph(nn.Module):
     def is_cuda(self):
         return next(self.parameters()).is_cuda
 
-    def forward(self, X: torch.Tensor, A: torch.Tensor = None):
+    def forward(self, X: torch.Tensor):
         """ Forward function of the temporl info graph model.
 
             Consists of a initial temporal convolution, followed by an spectral
@@ -334,9 +335,18 @@ class TemporalInfoGraph(nn.Module):
         # Features could be twice or more!
         X = X.type('torch.FloatTensor').to(self.device)
 
-        Z = self.model(X)
-        Z = Z.mean(dim=2)
+        #### Data Normalization ####
+        if hasattr(self, "data_norm"):
+            N, C, V, T = X.shape
+            X = X.reshape(N, V * C, T)  # Flatten to create large feature matrix
+            X = self.data_norm(X)
+            # Convert back to original format
+            X = X.reshape(N, C, V, T)
 
+        Z = self.model(X)
+
+        Z = Z.mean(dim=2)
+        
         # Mean readout: Average each feature over all nodes --> dimension (features, 1)
         # Average over dimension 2, dim 2 corresponds to the nodes
         # (We want to aggregate the representation of each node!)

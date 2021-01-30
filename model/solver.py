@@ -265,12 +265,12 @@ class Solver():
             #### Training ####
             self.model.train()
             self.phase = "train"
-            for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.train_loader, total=len(self.train_loader), leave=False,
+            for self.batch, (batch_x, self.batch_y) in enumerate(tqdm(self.train_loader, total=len(self.train_loader), leave=False,
                                                                       disable=False, desc=f'Trai. Batch (Epoch: {self.epoch})')):
-                self.train_step(batch_x, batch_y, encoder)
+                self.train_step(batch_x, self.batch_y, encoder)
 
                 if encoder is None and callable(track):
-                    track("loss")
+                    track("train_step")
 
                 # if callable(track):
                 #     track("training")
@@ -289,9 +289,9 @@ class Solver():
                     self.val_label = np.array([])
                     #### Validate ####
                     # self.model.eval()
-                    for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.val_loader, disable=False, leave=False,
+                    for self.batch, (batch_x, self.batch_y) in enumerate(tqdm(self.val_loader, disable=False, leave=False,
                                                                         desc=f'Vali. Batch (Epoch: {self.epoch})')):
-                        self.val_step(batch_x, batch_y, encoder)
+                        self.val_step(batch_x, self.batch_y, encoder)
                     
                     if not isinstance(self.yhat, tuple) and len(self.val_loader) > 0:
                         self.val_metric = evaluate(self.val_pred, self.val_label)
@@ -338,7 +338,7 @@ class Solver():
 
             #### Test ####
             self.model.eval()
-            for self.batch, (batch_x, batch_y) in enumerate(tqdm(self.test_loader, disable=False, leave=False,
+            for self.batch, (batch_x, self.batch_y) in enumerate(tqdm(self.test_loader, disable=False, leave=False,
                                                                       desc=f'Test. Batch (Epoch: {self.epoch})')):
                 # The train loader returns dim (batch_size, frames, nodes, features)
                 try:
@@ -364,7 +364,7 @@ class Solver():
                     self.yhat_idx = torch.argsort(self.yhat, descending=True)
 
                     self.predictions = np.vstack([self.predictions, self.yhat_idx.detach().cpu().numpy()]) if self.predictions.size else self.yhat_idx.detach().cpu().numpy()
-                    self.labels = np.append(self.labels, batch_y.detach().cpu().numpy())
+                    self.labels = np.append(self.labels, self.batch_y.detach().cpu().numpy())
 
             self.metric = evaluate(self.predictions, self.labels)
 

@@ -240,11 +240,11 @@ class Tracker(object):
             self.track_validation()  # Not used yet!
         elif mode == "evaluation":
             self.track_evaluation()  # Not used yet!
-        elif mode == "loss":
-            self.track_loss()
+        elif mode == "train_step":
+            self.track_train_step()
 
     #### (Individual) Tracker Functions #####
-    def track_loss(self):
+    def track_train_step(self):
         """ Function to track the loss calculation.
         """
         if  "visuals" in self.cfg and "memory" in self.cfg["visuals"]:
@@ -461,6 +461,30 @@ class Tracker(object):
                     fig.savefig(
                         path+f"/{self.solver.epoch}.discriminator.batch{self.solver.batch}.png")
 
+            #### Store Intermediate Embeddings ####
+            if ("emb_tracking" in self.cfg and type(self.cfg["emb_tracking"]) == int and
+                self.solver.epoch % self.cfg["emb_tracking"] == 0) :
+                if not hasattr(self, "emb_x") and not hasattr(self, "emb_y") :
+                    self.emb_x = np.array([])
+                    self.emb_y = np.array([])
+                
+                if self.emb_x.size:
+                    self.emb_x = np.concatenate([self.emb_x, self.solver.yhat[0].detach().cpu().numpy()])
+                else:
+                    self.emb_x = self.solver.yhat[0].detach().cpu().numpy()
+                
+                if self.emb_y.size:
+                    self.emb_y = np.concatenate([self.emb_y, self.solver.batch_y.numpy()])
+                else:
+                    self.emb_y = self.solver.batch_y.numpy()
+                
+                if (self.solver.batch == len(self.solver.train_loader) - 1 and
+                    self.solver.phase == "train"):
+                    self.save_embeddings()
+                    self.emb_x = np.array([])
+                    self.emb_y = np.array([])
+
+
     def track_epoch(self):
         """ Function that manages the tracking per epoch (called from the solver).
         """
@@ -640,12 +664,6 @@ class Tracker(object):
                 name = "TIG.loss"
                 self.save_plot(fig, path, name)
 
-        #### Store Intermediate Embeddings ####
-        if ("emb_tracking" in self.cfg and type(self.cfg["emb_tracking"]) == int
-            and self.solver.epoch%self.cfg["emb_tracking"] == 0):
-            self.save_embeddings()
-
-
         #### Store Intermediate Values ####
         self.save_loss_metric()
 
@@ -662,7 +680,6 @@ class Tracker(object):
                                    self.solver.train_metric[0])
                 self.ex.log_scalar(f"{self.tag}train.top5",
                                    self.solver.train_metric[1])
-
 
     def track_train(self):
         """ Function that manage the tracking per trainings batch (called from the solver).
@@ -796,15 +813,11 @@ class Tracker(object):
                     self.solver.val_metrics)
 
     def save_embeddings(self):
-        with torch.no_grad():
-            device = self.solver.model.device
-            self.solver.model = self.solver.model.cpu()
-            emb_x = np.array(list(np.array(self.solver.train_loader.dataset, dtype=object)[:, 0]))
-            emb_x = self.solver.model(emb_x.transpose((0, 3, 2, 1)))[0]
-            self.solver.model = self.solver.model.to(device)
+        # buffer = io.BytesIO()
+        # np.savez(buffer, x=self.emb_x, y=self.emb_y)
+        # self.add_artifact(buffer.getvalue(), name=f"embeddings_{self.solver.phase}.npz")
 
-        emb_y = np.array(self.solver.train_loader.dataset, dtype=object)[:, 1]
-        np.savez(f'{self.local_path}/embeddings', x=emb_x, y=emb_y)
+        np.savez(f'{self.local_path}/embeddings_{self.solver.phase}', x=self.emb_x, y=self.emb_y)
 
     def track_locally(self):
         """ Function to track everything after the training/testing is done locally.

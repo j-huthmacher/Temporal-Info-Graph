@@ -396,12 +396,12 @@ class TemporalInfoGraph(nn.Module):
     def permute_3d_2d(self, x):
         """
         """
-        return x.permute(0, 2, 1).resize(x.shape[0] * x.shape[2], x.shape[1])
+        return x.permute(0, 2, 1).reshape(x.shape[0] * x.shape[2], x.shape[1])
 
     def permute_2d_3d(self, x, shape):
         """
         """
-        return x.resize(shape[0], shape[2], shape[1]).permute(0,2,1)
+        return x.reshape(shape[0], shape[2], shape[1]).permute(0,2,1)
 
     @property
     def num_paramters(self):

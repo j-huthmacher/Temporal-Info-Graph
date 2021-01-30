@@ -202,7 +202,19 @@ class Experiment():
                 del emb_y
             except Exception as e:  #pylint: disable=bare-except
                 # Not each experiement has embeddings saved
-                print(e)
+                try:
+                    data = np.load(f"{path}embeddings_train.npz", allow_pickle=True)
+                    emb_x = data["x"]
+                    emb_y = data["y"]
+
+                    self.emb_loader = DataLoader(list(zip(emb_x, emb_y)))
+
+                    #### Clean Storage ####
+                    del data
+                    del emb_x
+                    del emb_y
+                except:
+                    pass
                 pass
             
             #### TIG Model/Losses/Metric ####
@@ -258,6 +270,22 @@ class Experiment():
                 del emb_y
             except:  #pylint: disable=bare-except
                 # Not each experiement has embeddings saved
+                try:
+                    f = sftp.open(f"{path}embeddings_train.npz")
+                    f.prefetch()
+                    f = f.read()
+                    data = np.load(io.BytesIO(f))
+                    emb_x = data["x"]
+                    emb_y = data["y"]
+
+                    self.emb_loader = DataLoader(list(zip(emb_x, emb_y)))
+
+                    #### Clean Storage ####
+                    del data
+                    del emb_x
+                    del emb_y
+                except:
+                    pass
                 pass
 
             #### TIG Model/Losses/Metric ####

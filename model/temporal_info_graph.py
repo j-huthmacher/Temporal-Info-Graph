@@ -70,10 +70,15 @@ class TemporalConvolution(nn.Module):
         if isinstance(self.kernel, int):
             self.kernel = (1, self.kernel)
 
+        
+        #### Padding for Temporal Dependency #####
+        padding = (0, (self.kernel[1] - 1) // 2)
+
         self.conv = nn.Conv2d(self.c_in,
                               self.c_out,
                               kernel_size=self.kernel,
-                              bias=(self.weights == None))
+                              padding=padding,
+                              bias=(self.weights is None))
 
         if weights is not None:
             self.conv.weight = torch.nn.Parameter(self.weights)

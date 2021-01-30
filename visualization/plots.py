@@ -231,7 +231,7 @@ def plot_heatmap(matrix: np.ndarray, xlabel: str = "", ylabel: str = "", ticks: 
 
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
-    ax.set(**im_args)
+    
     hm = ax.imshow(matrix, cmap="YlGn")
 
     cbar = ax.figure.colorbar(hm, ax=ax, orientation = "horizontal")
@@ -248,6 +248,8 @@ def plot_heatmap(matrix: np.ndarray, xlabel: str = "", ylabel: str = "", ticks: 
 
     ax.set_xticklabels(np.arange(xticks))
     ax.set_yticklabels(np.arange(yticks))
+
+    ax.set(**im_args)
 
     ax.grid(False)
 

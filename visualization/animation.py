@@ -27,7 +27,7 @@ images = {
 
 }
 
-def create_gif(fig: Any, path: str):
+def create_gif(fig: Any, path: str, name: str):
     """ Creates a given either by handover successive each frame or by provide a path where
         all frames are located.
 
@@ -59,7 +59,7 @@ def create_gif(fig: Any, path: str):
 
         Path(os.path.split(path)[0]).mkdir(parents=True, exist_ok=True)
 
-        im.save(fp=path, format='GIF', append_images=images[path],
+        im.save(fp=path + name, format='GIF', append_images=images[path],
                 save_all=True, duration=200, loop=0)
         # fig.savefig(path.replace(".gif", ".final.png"), dpi=150)
         # if not fill:

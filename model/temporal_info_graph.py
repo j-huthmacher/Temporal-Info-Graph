@@ -66,11 +66,10 @@ class TemporalConvolution(nn.Module):
         self.c_out = c_out
         self.kernel = kernel
         self.weights = weights
-        
+
         if isinstance(self.kernel, int):
             self.kernel = (1, self.kernel)
 
-        
         #### Padding for Temporal Dependency #####
         padding = (0, (self.kernel[1] - 1) // 2)
 
@@ -228,6 +227,8 @@ class SpectralConvolution(nn.Module):
             A = torch.tensor(A, dtype=torch.float32)
         A = A.type('torch.FloatTensor').to(self.device)
 
+        # TODO: Check why STCGN uses as an preceeding conv layer
+
         # Adjacency matrix multiplication in time!
         # TODO: Adapt the indices to omit the permutation before and after.
         self.W = self.W.to(self.device)
@@ -244,7 +245,7 @@ class TemporalInfoGraph(nn.Module):
 
     def __init__(self, dim_in: tuple = None, architecture: [tuple] = [(2, 32, 32, 32, 32)],
                  activation: str = "leakyReLU", batch_norm: bool = True,
-                 A: torch.Tensor = None, discriminator_layer: bool = True):
+                 A: torch.Tensor = None, discriminator_layer: bool = True, residual: bool = False):
         """ Initilization of the TIG model.
 
             Parameter:
@@ -273,14 +274,6 @@ class TemporalInfoGraph(nn.Module):
         super().__init__()
 
         #### Model Creation #####
-
-        # self.c_in = c_in
-        # self.c_out = c_out
-        # self.spec_out = spec_out
-        # self.tempKernel = tempKernel
-        # self.out = out
-        # self.dim_in = dim_in 
-
         layers = []
         self.embedding_dim = architecture[-1][3]
 
@@ -293,6 +286,12 @@ class TemporalInfoGraph(nn.Module):
             layers.append(TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel, bn_in=False))  # in_dim (batch, features, nodes, time)
             layers.append(SpectralConvolution(c_in=c_out, c_out=spec_out, A=A))  # in_dim (batch, nodes, time, features)
             layers.append(TemporalConvolution(c_in=spec_out, c_out=out, kernel=kernel, bn_in=False))  # in_dim (batch, nodes, time, features)
+            
+            # if (c_in != out) and residual:
+            #     self.residual = nn.Sequential(
+            #         nn.Conv2d(c_in, out, kernel_size=1),
+            #         nn.BatchNorm2d(out),
+            #     )
 
             #### ACTIVATION #####
             if activation == "leakyReLU":
@@ -300,6 +299,8 @@ class TemporalInfoGraph(nn.Module):
             elif activation == "ReLU":
                 layers.append(nn.ReLU())
 
+
+        #### Discriminator FF ####
         self.discriminator_layer = discriminator_layer
         if discriminator_layer:
             self.global_ff = FF(self.embedding_dim)

@@ -136,11 +136,11 @@ class Solver():
 
         if encoder is not None:
             #### Downstream Task ####
-            self.yhat, _ = encoder.to(self.model.device)(batch_x, torch.tensor(KINECT_ADJACENCY))
+            self.yhat, _ = encoder.to(self.model.device)(batch_x)
             self.yhat = self.model(self.yhat)
         else:
             #### TIG Prediction ####
-            self.yhat = self.model(batch_x, torch.tensor(KINECT_ADJACENCY))
+            self.yhat = self.model(batch_x)
                 
         if isinstance(self.yhat, tuple):
             loss = self.loss_fn(*self.yhat)
@@ -185,11 +185,11 @@ class Solver():
                         
         if encoder is not None:
             #### Downstream Task ####
-            self.yhat, _ = encoder(batch_x, torch.tensor(KINECT_ADJACENCY))
+            self.yhat, _ = encoder(batch_x)
             self.yhat = self.model(self.yhat)
         else:
             #### TIG Prediction ####
-            self.yhat = self.model(batch_x, torch.tensor(KINECT_ADJACENCY))
+            self.yhat = self.model(batch_x)
 
         if isinstance(self.yhat, tuple):
             loss = self.loss_fn(*self.yhat)
@@ -351,10 +351,10 @@ class Solver():
                     batch_x = torch.tensor(batch_x, dtype=torch.float32)
 
                 if encoder is not None:
-                    self.yhat, _ = self.model(batch_x, torch.tensor(KINECT_ADJACENCY))
+                    self.yhat, _ = self.model(batch_x)
                     self.yhat = self.model(self.yhat)
                 else:
-                    self.yhat = self.model(batch_x, torch.tensor(KINECT_ADJACENCY))
+                    self.yhat = self.model(batch_x)
 
                 if isinstance(self.yhat, tuple):
                     # loss = self.loss_fn(*self.yhat)

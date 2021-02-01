@@ -23,6 +23,7 @@ from sacred import Experiment
 from sacred.observers import MongoObserver
 
 # pylint: disable=import-error
+from model.loss import bce_loss
 from model import MLP, TemporalInfoGraph
 from model import get_negative_expectation as neg_exp
 from model import get_positive_expectation as pos_exp
@@ -315,25 +316,28 @@ class Tracker(object):
 
             #### Track statistical values of the loss ####
             f = Path(f"{self.local_path}loss.stats.samples.csv")
-            if not f.is_file():
-                f = open(f"{self.local_path}loss.stats.samples.csv", "a")
-                f.write(
-                    "num_pos_samples,num_neg_samples,ratio,num_graphs,num_nodes\n")
-                f.write(f"{loss_fn.pos_samples.numel()},")
-                f.write(f"{loss_fn.neg_samples.numel()},")
-                f.write(
-                    f"{(loss_fn.neg_samples.numel())/(loss_fn.pos_samples.numel() + loss_fn.neg_samples.numel())},")
-                f.write(f"{loss_fn.num_graphs},")
-                f.write(f"{loss_fn.num_nodes}\n")
-            else:
-                f = open(f"{self.local_path}loss.stats.samples.csv", "a")
-                f.write(f"{loss_fn.pos_samples.numel()},")
-                f.write(f"{loss_fn.neg_samples.numel()},")
-                f.write(
-                    f"{(loss_fn.neg_samples.numel())/(loss_fn.pos_samples.numel() + loss_fn.neg_samples.numel())},")
-                f.write(f"{loss_fn.num_graphs},")
-                f.write(f"{loss_fn.num_nodes}\n")
-            f.close()
+            try:
+                if not f.is_file():
+                    f = open(f"{self.local_path}loss.stats.samples.csv", "a")
+                    f.write(
+                        "num_pos_samples,num_neg_samples,ratio,num_graphs,num_nodes\n")
+                    f.write(f"{loss_fn.pos_samples.numel()},")
+                    f.write(f"{loss_fn.neg_samples.numel()},")
+                    f.write(
+                        f"{(loss_fn.neg_samples.numel())/(loss_fn.pos_samples.numel() + loss_fn.neg_samples.numel())},")
+                    f.write(f"{loss_fn.num_graphs},")
+                    f.write(f"{loss_fn.num_nodes}\n")
+                else:
+                    f = open(f"{self.local_path}loss.stats.samples.csv", "a")
+                    f.write(f"{loss_fn.pos_samples.numel()},")
+                    f.write(f"{loss_fn.neg_samples.numel()},")
+                    f.write(
+                        f"{(loss_fn.neg_samples.numel())/(loss_fn.pos_samples.numel() + loss_fn.neg_samples.numel())},")
+                    f.write(f"{loss_fn.num_graphs},")
+                    f.write(f"{loss_fn.num_nodes}\n")
+                f.close()
+            except:
+                pass
             
             if  "visuals" in self.cfg and "discriminator" in self.cfg["visuals"]:
                 f = Path(f"{self.local_path}loss.stats.expectations.csv")
@@ -795,20 +799,20 @@ class Tracker(object):
         return inner
 
     def save_loss_metric(self):
-        """
+        """ Saves the loss and metric values.
         """
         np.save(f'{self.local_path}/TIG_{self.tag}train_losses.npy',
                     self.solver.train_losses)
 
-        if hasattr(self.solver, "train_metric"):
+        if hasattr(self.solver, "train_metrics"):
             np.save(f"{self.local_path}/TIG_{self.tag}train.metrics.npy",
                     self.solver.train_metrics)
-        
+
         if hasattr(self.solver, "val_losses"):
             np.save(f'{self.local_path}/TIG_{self.tag}val_losses.npy',
                         self.solver.val_losses)
 
-        if hasattr(self.solver, "val_metric"):
+        if hasattr(self.solver, "val_metrics"):
             np.save(f"{self.local_path}/TIG_{self.tag}val.metrics.npy",
                     self.solver.val_metrics)
 

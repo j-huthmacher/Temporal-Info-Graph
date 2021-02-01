@@ -137,26 +137,27 @@ small_complex_encoder:
     path: ./content/
     verbose: True
   loader:
-    batch_size: 16
+    batch_size: 4
     shuffle: True
   stratify:
-    num: 5
-    lim: 500
-  emb_tracking: True
+    num: 100
+    lim: 100
+  emb_tracking: 10
+  loss: jsd
   encoder:
     architecture: [
-      [2, 32, 64, 64, 16],
-      [64, 64, 64, 64, 16],
-      [64, 64, 64, 64, 16],
-      [64, 64, 128, 128, 16],
-      [128, 128, 256, 256, 16]
+      [2, 32, 64, 16],
+      [64, 64, 64, 16],
+      [64, 64, 128, 16]
    ]
+    residual: True
+    # edge_weights: True
   encoder_training:
     verbose: True
     n_epochs: 50
-    optimizer_name: SGD
+    optimizer_name: Adam
     optimizer:
-      lr: 0.1
+      lr: 0.01
     gradient_clipping: 0.5
 
 evaluate_experiment:

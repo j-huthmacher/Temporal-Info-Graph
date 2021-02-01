@@ -6,10 +6,50 @@ import math
 
 import matplotlib
 import torch
+from torch import nn
 import torch.nn.functional as F
 
 matplotlib.use('Agg')
 
+
+def bce_loss(enc_global: torch.Tensor, enc_local: torch.Tensor):
+    """ Binary cross entropy loss with preceeding discriminator.
+
+        The idea: Train the encoder to distinguish between positive and negative
+        samples in a classification set up.
+
+        Parameters:
+            enc_local: torch.Tensor
+                Represents the encoded node/patch level embedding.
+                Dimension (batch_size, embedding_dim, num_nodes).
+                I.e. we have per batch entry a matrix where each row corresponds to the embedding
+                of the corresponding node.
+            enc_global: torch.Tensor
+                Represents the encoded graph level/global embedding.
+                Dimension (batch_size, embedding_dim)
+                I.e. we have per batch entry a single embedding of the corresponding graph.
+        Return:
+            torch.Tensor: Tensor containing the (batch) loss (mutual information estimate).
+    """
+    self = bce_loss
+
+    self.b_xent = nn.BCEWithLogitsLoss()
+
+    self.num_graphs = enc_global.shape[0]
+    self.num_nodes = enc_local.shape[-1]
+
+    #### Discriminator ####
+    # Row wise matrix product! Final dimension: (num_graphs, num_graphs * num_nodes)
+    self.discr_matr = torch.bmm(enc_global.repeat(self.num_graphs, 1, 1), enc_local)
+    self.discr_matr = self.discr_matr.type("torch.FloatTensor").permute(1,0,2)
+    self.discr_matr = self.discr_matr.reshape(self.num_graphs, (self.num_graphs)*self.num_nodes)
+
+    #### Sampling ####
+    # Diagonal with blocks 'num_nodes' ones on the diagonal. Labels the date
+    # with 1 for positive sample and 0 for negative sample.
+    self.mask = torch.block_diag(*[torch.ones(self.num_nodes) for _ in range(self.num_graphs)]).to("cpu")
+
+    return self.b_xent(self.discr_matr, self.mask)
 
 def jensen_shannon_mi(enc_global: torch.Tensor, enc_local: torch.Tensor):
     """ Jensen-Shannon mutual information estimate.
@@ -41,10 +81,10 @@ def jensen_shannon_mi(enc_global: torch.Tensor, enc_local: torch.Tensor):
 
     #### Sampling ####
     # Diagonal with blocks 'num_nodes' ones on the diagonal
-    mask = torch.block_diag(*[torch.ones(self.num_nodes) for _ in range(self.num_graphs)]).to("cpu")
+    self.mask = torch.block_diag(*[torch.ones(self.num_nodes) for _ in range(self.num_graphs)]).to("cpu")
 
-    self.pos_samples = self.discr_matr[mask == 1].reshape(self.num_graphs, self.num_nodes)
-    self.neg_samples = self.discr_matr[mask == 0].reshape(self.num_graphs,
+    self.pos_samples = self.discr_matr[self.mask == 1].reshape(self.num_graphs, self.num_nodes)
+    self.neg_samples = self.discr_matr[self.mask == 0].reshape(self.num_graphs,
                                                           (self.num_graphs - 1) * self.num_nodes)
 
     #### Expectation Calculation ####

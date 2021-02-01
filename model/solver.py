@@ -15,7 +15,7 @@ import numpy as np
 # pylint: disable=import-error
 from visualization import create_gif, plot_emb_pred
 from data import KINECT_ADJACENCY
-from model.loss import jensen_shannon_mi
+from model.loss import jensen_shannon_mi, bce_loss
 
 #### Local/Tracking Config ####
 # pylint: disable=import-error
@@ -93,7 +93,7 @@ class Solver():
             self.model = model
 
         self.loss_fn = jensen_shannon_mi if loss_fn is None else loss_fn
-
+        
         if dataloader is not None:
             # Can be None for testing
             self.train_loader = dataloader[0]
@@ -255,9 +255,10 @@ class Solver():
 
         #### Training & Validation ####
         start_epoch = self.epoch
-        for self.epoch in trange(start_epoch, self.train_cfg["n_epochs"],
+        pbar = trange(start_epoch, self.train_cfg["n_epochs"],
                                  disable=(not self.train_cfg["verbose"]),
-                                 desc=f'Epochs ({self.model.__class__.__name__})'):
+                                 desc=f'Epochs ({self.model.__class__.__name__})')
+        for self.epoch in pbar:
             # We store all losses and use a mask to access the right loss per epoch.
             # self.train_batch_losses = []
             self.val_batch_losses = []
@@ -265,8 +266,9 @@ class Solver():
             #### Training ####
             self.model.train()
             self.phase = "train"
+            
             for self.batch, (batch_x, self.batch_y) in enumerate(tqdm(self.train_loader, total=len(self.train_loader), leave=False,
-                                                                      disable=False, desc=f'Trai. Batch (Epoch: {self.epoch})')):
+                                                                 disable=False, desc=f'Trai. Batch (Epoch: {self.epoch})')):
                 self.train_step(batch_x, self.batch_y, encoder)
 
                 if encoder is None and callable(track):
@@ -280,6 +282,13 @@ class Solver():
                 self.train_metrics.append(self.train_metric)
                 self.train_pred = np.array([])
                 self.train_label = np.array([])
+            else:
+                yhat_norm = torch.sigmoid(self.loss_fn.discr_matr)
+                yhat_norm[yhat_norm > 0.5] = 1
+                yhat_norm[yhat_norm <= 0.5] = 0
+
+                loss_acc = (yhat_norm == self.loss_fn.mask).sum() / torch.numel(self.loss_fn.mask)
+                self.train_metrics.append(loss_acc)
 
             self.phase = "validation"
             if self.val_loader is not None:
@@ -292,20 +301,31 @@ class Solver():
                     for self.batch, (batch_x, self.batch_y) in enumerate(tqdm(self.val_loader, disable=False, leave=False,
                                                                         desc=f'Vali. Batch (Epoch: {self.epoch})')):
                         self.val_step(batch_x, self.batch_y, encoder)
-                    
+
                     if not isinstance(self.yhat, tuple) and len(self.val_loader) > 0:
                         self.val_metric = evaluate(self.val_pred, self.val_label)
                         self.val_metrics.append(self.val_metric)
                         self.val_pred = np.array([])
                         self.val_label = np.array([])
+                    else:
+                        yhat_norm = torch.sigmoid(self.loss_fn.discr_matr)
+                        yhat_norm[yhat_norm > 0.5] = 1
+                        yhat_norm[yhat_norm <= 0.5] = 0
+
+                        loss_acc = (yhat_norm == self.loss_fn.mask).sum() / torch.numel(self.loss_fn.mask)
+
+                        self.val_metrics.append(loss_acc)
 
                     # TODO: CHeck this
                     self.val_losses.append(np.mean(self.val_batch_losses) if len(self.val_batch_losses) > 0 else 0)
                     self.val_batch_losses = []
-            
+
             idx = self.epoch * len(self.train_loader)
             self.train_losses.append(np.mean(self.train_batch_losses[idx:idx+len(self.train_loader)]) if len(self.train_batch_losses) > 0 else 0)
             # self.train_batch_losses = []
+
+            pbar.set_description(f'Epochs ({self.model.__class__.__name__})' + \
+                                 f'(Train Acc.: {"%.2f"%np.max(self.train_metrics)}, Val. Acc.: {"%.2f"%np.max(self.val_metrics)})')
 
             if callable(track):
                 track("epoch")

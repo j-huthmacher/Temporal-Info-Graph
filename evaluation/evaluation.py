@@ -24,6 +24,8 @@ from sklearn.decomposition import PCA
 
 from model.solver import evaluate  
 
+from tqdm import tqdm
+
 
 def mlp_classify(x,y, search=False, ret_pred=False):
     le = preprocessing.LabelEncoder()
@@ -100,7 +102,7 @@ def randomforest_classify(x, y, search, ret_pred=False):
 
     kf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=None)
     accuracies = []
-    for train_index, test_index in kf.split(x, y):
+    for train_index, test_index in tqdm(kf.split(x, y)):
 
         x_train, x_test = x[train_index], x[test_index]
         y_train, y_test = y[train_index], y[test_index]

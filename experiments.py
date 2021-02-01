@@ -37,6 +37,7 @@ from config.config import log, create_logger
 from data import KINECT_ADJACENCY
 from data.tig_data_set import TIGDataset
 from model import MLP, Solver, TemporalInfoGraph
+from model.loss import jensen_shannon_mi, bce_loss
 from tracker import Tracker
 from evaluation import svc_classify, mlp_classify, randomforest_classify
 from visualization.plots import plot_emb, plot_curve
@@ -117,7 +118,12 @@ def experiment(tracker: Tracker, config: dict):
         if "print_summary" in config and config["print_summary"]:
             summary(tig, input_size=(2, 36, 300), batch_size=config["loader"]["batch_size"])
 
-        solver = Solver(tig, loader)
+        loss_fn = jensen_shannon_mi
+        if "loss" in config and config["loss"] == "bce":
+            loss_fn = bce_loss
+
+
+        solver = Solver(tig, loader, loss_fn)
 
         #### Tracking ####
         tracker.track_traning(solver.train)(config["encoder_training"])
@@ -240,7 +246,7 @@ class Experiment():
             #### TIG Train Metric ####
             try:
                 self.tig_train_metrics = np.load(f"{path}TIG_train.metrics.npy")
-                self.tig_val_metrics = np.load(f"{path}TIG_train.metrics.npy")
+                self.tig_val_metrics = np.load(f"{path}TIG_val.metrics.npy")
             except:  #pylint: disable=bare-except
                 pass
 
@@ -446,7 +452,7 @@ class Experiment():
             writer.add_text("config", pprint.pformat(self.config, indent=1, width=80).replace("\n", "  \n").replace("     ", "&nbsp;"))
 
     #### Experiment Visualization ####
-    def plot_dash(self, figsize=(14, 7)):
+    def plot_dash(self, figsize=(14, 7), mode="PCA"):
         """
         """
         fig = plt.figure(figsize=figsize, constrained_layout=True)
@@ -454,7 +460,7 @@ class Experiment():
 
         #### Embeddings ####
         ax = fig.add_subplot(gs[:, 0])
-        plot_emb(self.emb_x, self.emb_y, ax = ax, title="Embeddings")
+        plot_emb(self.emb_x, self.emb_y, ax = ax, title="Embeddings", mode=mode)
 
         #### TIG/MLP Loss/Metrics ####
         ax = fig.add_subplot(gs[0, 1])
@@ -503,9 +509,10 @@ class Experiment():
                 title = "Metric"
                 args = {
                     "data": {
-                        "TIG Train Loss (JSD MI)": self.tig_train_metrics,
-                        "TIG Val Loss (JSD MI)": self.tig_val_metrics
-                        }
+                        "TIG Train Metric": self.tig_train_metrics,
+                        "TIG Val Metric": self.tig_val_metrics
+                        },
+                    "line_mode": np.mean
                     }
             elif name == "MLP.loss":
                 model_name = "MLP: "
@@ -526,7 +533,8 @@ class Experiment():
                         "MLP Top-1 Acc. (Train)": np.array(self.clf_train_metrics)[:, 0],
                         "MLP Top-5 Acc. (Train)": np.array(self.clf_train_metrics)[:, 1],
                         
-                        }
+                        },
+                    "line_mode": np.mean
                     }
                 if hasattr(self, "clf_val_metrics"):
                     args["data"]["MLP Top-1 Acc. (Val)"]  = np.array(self.clf_val_metrics)[:, 0]
@@ -539,10 +547,19 @@ class Experiment():
         if args is not None:
             return plot_curve(**args, title=title, model_name=model_name, ax=ax)
 
-    def plot_emb(self):
+    def plot_emb(self, mode="PCA"):
         """
         """
-        return plot_emb(self.emb_x, self.emb_y)
+        return plot_emb(self.emb_x, self.emb_y, mode=mode)
+
+    def plot_class_distr(self):
+        fig, ax = plt.subplots(figsize=(7,5))
+
+        unique, counts = np.unique(self.emb_y, return_counts=True)
+
+        ax.bar(unique, counts)
+
+        return ax.figure
 
     ### Experiment Evaluation ####
     def evaluate_emb(self, plot: bool = False, which: [str] = None):
@@ -553,7 +570,10 @@ class Experiment():
                     If true the embeddings with their predictions are plotted.
         """
         if hasattr(self, "clf_val_metrics"):
-            self.log.info(f"(Pipeline) MLP Accuracy: {np.max(self.clf_val_metrics, axis=0)}")
+            if hasattr(self, "log"):
+                self.log.info(f"(Pipeline) MLP Accuracy: {np.max(self.clf_val_metrics, axis=0)}")
+            else:
+                print(f"(Pipeline) MLP Accuracy: {np.max(self.clf_val_metrics, axis=0)}")
     
         #### SVM Classifier ####
         if which is None or "svm" in which:
@@ -658,6 +678,7 @@ class Experiment():
 
             ax.scatter(x[:, 0], x[:, 1], x[:, 2],  c=self.emb_y.astype(int), cmap=sns.color_palette("Spectral", as_cmap=True))
             ax.view_init(10, angle)
+            ax.set_facecolor("white")
 
             if gif_path is not None:
                 create_gif(fig, path=gif_path, name="embeddings_3d.gif")

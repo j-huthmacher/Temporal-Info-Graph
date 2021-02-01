@@ -277,8 +277,8 @@ class TemporalInfoGraph(nn.Module):
         #### Model Creation #####
         self.layers = []
         self.edge_weights = nn.ParameterList()
-        self.embedding_dim = architecture[-1][3]
-        
+        self.embedding_dim = architecture[-1][-2]
+
         if A is not None:
             self.register_buffer('A', torch.tensor(A))
 
@@ -287,14 +287,22 @@ class TemporalInfoGraph(nn.Module):
             # Features times nodes
             self.data_norm = nn.BatchNorm1d(architecture[0][0] * A.shape[0])
 
-        for (c_in, c_out, spec_out, out, kernel) in architecture:
-            tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel, bn_in=False)
-            specConv = SpectralConvolution(c_in=c_out, c_out=spec_out)
-            tempConv2 = TemporalConvolution(c_in=spec_out, c_out=out, kernel=kernel, bn_in=False)
+        for layer in architecture:
+            if len(layer) == 5:
+                c_in, c_out, spec_out, out, kernel = layer
+                tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel, bn_in=False)
+                specConv = SpectralConvolution(c_in=c_out, c_out=spec_out)
+                tempConv2 = TemporalConvolution(c_in=spec_out, c_out=out, kernel=kernel, bn_in=False)
+            else:
+                c_in, c_out, out, kernel = layer
+                tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel, bn_in=False)
+                specConv = SpectralConvolution(c_in=c_out, c_out=out)
+                tempConv2 = nn.Identity()
 
             #### Residual Layer ####
             if (c_in != out) and residual:
-                residual = nn.Sequential(nn.Conv2d(c_in, out, kernel_size=(1, (kernel*2)-1)),
+                res_kernel = (1, (kernel*2)-1) if len(layer) == 5 else (1, kernel)
+                residual = nn.Sequential(nn.Conv2d(c_in, out, kernel_size=res_kernel),
                                          nn.BatchNorm2d(out))
                 self.layers.append(nn.Sequential(residual, tempConv1, specConv, tempConv2, nn.ReLU()))
             else:

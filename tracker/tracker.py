@@ -732,7 +732,8 @@ class Tracker(object):
             try:
                 cfg["train_length"] = len(self.solver.train_loader.dataset)
                 cfg["val_length"] = len(self.solver.val_loader.dataset)
-            except:
+            except Exception as e:
+                print(e)
                 pass
 
             log.info(f"Experiment path: {self.local_path}")
@@ -740,7 +741,7 @@ class Tracker(object):
             Path(self.local_path).mkdir(parents=True, exist_ok=True)
 
             with open(f'{self.local_path}/config.json', 'w') as fp:
-                json.dump({**cfg, **self.cfg}, fp)
+                json.dump({**self.cfg, **cfg,}, fp)
 
             train(cfg, track=self.track, encoder=encoder)
 
@@ -805,16 +806,20 @@ class Tracker(object):
                     self.solver.train_losses)
 
         if hasattr(self.solver, "train_metrics"):
-            np.save(f"{self.local_path}/TIG_{self.tag}train.metrics.npy",
-                    self.solver.train_metrics)
+            np.savez(f"{self.local_path}/TIG_{self.tag}train.metrics.npz",
+                     **self.solver.train_metrics)
+            # np.savez(f"{self.local_path}/TIG_{self.tag}train.metrics.npy",
+            #         self.solver.train_metrics)
 
         if hasattr(self.solver, "val_losses"):
             np.save(f'{self.local_path}/TIG_{self.tag}val_losses.npy',
                         self.solver.val_losses)
 
         if hasattr(self.solver, "val_metrics"):
-            np.save(f"{self.local_path}/TIG_{self.tag}val.metrics.npy",
-                    self.solver.val_metrics)
+            np.savez(f"{self.local_path}/TIG_{self.tag}val.metrics.npz",
+                     **self.solver.val_metrics)
+            # np.save(f"{self.local_path}/TIG_{self.tag}val.metrics.npy",
+            #         self.solver.val_metrics)
 
     def save_embeddings(self):
         # buffer = io.BytesIO()

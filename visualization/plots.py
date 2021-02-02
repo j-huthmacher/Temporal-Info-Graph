@@ -196,8 +196,10 @@ def plot_curve(data: dict, ax: matplotlib.axes.Axes = None, n_epochs: int = None
         ax.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
 
     ax.set_title(f"{model_name} {title}")
+    ax.figure.tight_layout()
+    handles, labels = ax.get_legend_handles_labels()
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2),
-              fancybox=True, shadow=True, ncol=2)
+              fancybox=True, shadow=True, ncol=len(labels)//2)
     
     return ax.figure
 

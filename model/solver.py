@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm, trange
 import numpy as np
+from sklearn import metrics
 
 # pylint: disable=import-error
 from visualization import create_gif, plot_emb_pred
@@ -25,6 +26,8 @@ from config.config import log
 from sacred import Experiment
 
 # pylint: disable=too-many-instance-attributes
+
+
 class Solver():
     """ The Solver class implements several functions to provide a common training
         and testing procedure.
@@ -32,7 +35,8 @@ class Solver():
 
     #pylint: disable=dangerous-default-value
     def __init__(self, model: nn.Module, dataloader: [DataLoader],
-                 loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor] = None,
+                 loss_fn: Callable[[torch.Tensor,
+                                    torch.Tensor], torch.Tensor] = None,
                  train_cfg: dict = {}, test_cfg: dict = {}):
         """ Initialization of the Solver.
 
@@ -60,7 +64,7 @@ class Solver():
             "optimizer": {
                 "lr": 1e-3,
                 "weight_decay": 1e-3
-                },
+            },
             "verbose": False
         }
         self.train_cfg = {**self.train_cfg, **train_cfg}
@@ -82,10 +86,11 @@ class Solver():
             self.model = modelClass(**checkpoint['model_params'])
             self.model.load_state_dict(checkpoint['model_state_dict'])
 
-            optim_params = (self.train_cfg["optimizer"] 
+            optim_params = (self.train_cfg["optimizer"]
                             if checkpoint['optim_params'] == {}
                             else checkpoint['optim_params'])
-            self.optimizer = optimClass(self.model.parameters(), **optim_params)
+            self.optimizer = optimClass(
+                self.model.parameters(), **optim_params)
             self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
             self.epoch = checkpoint['epoch']
@@ -93,11 +98,12 @@ class Solver():
             self.model = model
 
         self.loss_fn = jensen_shannon_mi if loss_fn is None else loss_fn
-        
+
         if dataloader is not None:
             # Can be None for testing
             self.train_loader = dataloader[0]
-            self.val_loader = dataloader[1] if len(dataloader) == 2 or len(dataloader) == 3 else None
+            self.val_loader = dataloader[1] if len(
+                dataloader) == 2 or len(dataloader) == 3 else None
             self.test_loader = dataloader[2] if len(dataloader) == 3 else None
 
         # Object storage to track the performance
@@ -105,8 +111,8 @@ class Solver():
         self.val_losses = []
         self.test_losses = []  # TODO: Useless?
 
-        self.val_metrics = []
-        self.train_metrics = []
+        self.val_metrics = {}  # np.array([])
+        self.train_metrics = {} # np.array([])
         self.predictions = np.array([])
         self.labels = np.array([])
 
@@ -124,14 +130,15 @@ class Solver():
         # TODO: Check if it is needed
         try:
             if isinstance(batch_x, torch.Tensor):
-                batch_x = batch_x.type("torch.FloatTensor").permute(0,3,2,1)
+                batch_x = batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1)
             else:
-                batch_x = torch.tensor(batch_x, dtype=torch.long).permute(0,3,2,1)
-        except:  #pylint: disable=bare-except
+                batch_x = torch.tensor(
+                    batch_x, dtype=torch.long).permute(0, 3, 2, 1)
+        except:  # pylint: disable=bare-except
             # For testing MLP on iris
             if not isinstance(batch_x, torch.Tensor):
-                batch_x = torch.tensor(batch_x, dtype=torch.float32)            
-                
+                batch_x = torch.tensor(batch_x, dtype=torch.float32)
+
         self.optimizer.zero_grad()
 
         if encoder is not None:
@@ -141,48 +148,54 @@ class Solver():
         else:
             #### TIG Prediction ####
             self.yhat = self.model(batch_x)
-                
+
         if isinstance(self.yhat, tuple):
             loss = self.loss_fn(*self.yhat)
         else:
             if not isinstance(batch_y, torch.Tensor):
-                batch_y = torch.tensor(batch_y, dtype=torch.long).to(self.model.device)
+                batch_y = torch.tensor(
+                    batch_y, dtype=torch.long).to(self.model.device)
             else:
-                batch_y = batch_y.type("torch.LongTensor").to(self.model.device)
+                batch_y = batch_y.type(
+                    "torch.LongTensor").to(self.model.device)
 
             loss = self.loss_fn(self.yhat, batch_y)
 
             #### EVALUATION DURING TRAINING ####
             self.yhat_idx = torch.argsort(self.yhat, descending=True)
-            self.train_pred = np.vstack([self.train_pred, self.yhat_idx.detach().cpu().numpy()]) if self.train_pred.size else self.yhat_idx.detach().cpu().numpy()
-            self.train_label = np.append(self.train_label, batch_y.detach().cpu().numpy())
+            self.train_pred = np.vstack([self.train_pred, self.yhat_idx.detach().cpu(
+            ).numpy()]) if self.train_pred.size else self.yhat_idx.detach().cpu().numpy()
+            self.train_label = np.append(
+                self.train_label, batch_y.detach().cpu().numpy())
 
         if loss.isnan():
             # Loss can be nan when the batch only contains a single sample!
             return
-        
+
         self.train_batch_losses.append(torch.squeeze(loss).item())
         loss.backward()
         if "gradient_clipping" in self.train_cfg and (type(self.train_cfg["gradient_clipping"]) == int or float):
-            clip_grad_norm_(self.model.parameters(), self.train_cfg["gradient_clipping"])
+            clip_grad_norm_(self.model.parameters(),
+                            self.train_cfg["gradient_clipping"])
         self.optimizer.step()
 
     def val_step(self, batch_x, batch_y, encoder=None):
         """ Validation step function to reduce memory footprint.
         """
-        
+
         # The train loader returns dim (batch_size, frames, nodes, features)
         # TODO: Check if it is needed
         try:
             if isinstance(batch_x, torch.Tensor):
-                batch_x = batch_x.type("torch.FloatTensor").permute(0,3,2,1)
+                batch_x = batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1)
             else:
-                batch_x = torch.tensor(batch_x, dtype=torch.float32).permute(0,3,2,1)
+                batch_x = torch.tensor(
+                    batch_x, dtype=torch.float32).permute(0, 3, 2, 1)
         except:
             # For testing MLP on iris
             if not isinstance(batch_x, torch.Tensor):
-                batch_x = torch.tensor(batch_x, dtype=torch.float32)         
-                        
+                batch_x = torch.tensor(batch_x, dtype=torch.float32)
+
         if encoder is not None:
             #### Downstream Task ####
             self.yhat, _ = encoder(batch_x)
@@ -195,27 +208,30 @@ class Solver():
             loss = self.loss_fn(*self.yhat)
         else:
             if not isinstance(batch_y, torch.Tensor):
-                batch_y = torch.tensor(batch_y, dtype=torch.float32).to(self.model.device)
+                batch_y = torch.tensor(
+                    batch_y, dtype=torch.float32).to(self.model.device)
             else:
-                batch_y = batch_y.type("torch.LongTensor").to(self.model.device)
+                batch_y = batch_y.type(
+                    "torch.LongTensor").to(self.model.device)
 
             loss = self.loss_fn(self.yhat, batch_y)
 
             #### EVALUATION DURING VALIDATION ####
             self.yhat_idx = torch.argsort(self.yhat, descending=True)
-            self.val_pred = np.vstack([self.val_pred, self.yhat_idx.detach().cpu().numpy()]) if self.val_pred.size else self.yhat_idx.detach().cpu().numpy()
-            self.val_label = np.append(self.val_label, batch_y.detach().cpu().numpy())
+            self.val_pred = np.vstack([self.val_pred, self.yhat_idx.detach().cpu(
+            ).numpy()]) if self.val_pred.size else self.yhat_idx.detach().cpu().numpy()
+            self.val_label = np.append(
+                self.val_label, batch_y.detach().cpu().numpy())
 
         if loss.isnan():
             # Loss can be nan when the batch only contains a single sample!
             return
         self.val_batch_losses.append(torch.squeeze(loss).item())
 
-
         # if callable(track):
         #     track("validation")
 
-        # # lr_scheduler.step()            
+        # # lr_scheduler.step()
 
     def train(self, train_config: dict = None, track: object = None,
               optimizer: torch.optim.Optimizer = None, encoder: nn.Module = None):
@@ -241,11 +257,11 @@ class Solver():
 
         self.encoder = encoder
         self.optimizer = (getattr(optim,  self.train_cfg["optimizer_name"])(
-                            self.model.parameters(),
-                            **self.train_cfg["optimizer"],
-                            ) 
-                         if optimizer is None 
-                         else optimizer)
+            self.model.parameters(),
+            **self.train_cfg["optimizer"],
+        )
+            if optimizer is None
+            else optimizer)
 
         #### Learning Rate Decay #####
         # decayRate = 0.95
@@ -256,8 +272,8 @@ class Solver():
         #### Training & Validation ####
         start_epoch = self.epoch
         pbar = trange(start_epoch, self.train_cfg["n_epochs"],
-                                 disable=(not self.train_cfg["verbose"]),
-                                 desc=f'Epochs ({self.model.__class__.__name__})')
+                      disable=(not self.train_cfg["verbose"]),
+                      desc=f'Epochs ({self.model.__class__.__name__})')
         for self.epoch in pbar:
             # We store all losses and use a mask to access the right loss per epoch.
             # self.train_batch_losses = []
@@ -265,30 +281,64 @@ class Solver():
 
             #### Training ####
             self.model.train()
+            train_batch_metric = {}
             self.phase = "train"
-            
             for self.batch, (batch_x, self.batch_y) in enumerate(tqdm(self.train_loader, total=len(self.train_loader), leave=False,
-                                                                 disable=False, desc=f'Trai. Batch (Epoch: {self.epoch})')):
+                                                                      disable=False, desc=f'Trai. Batch (Epoch: {self.epoch})')):
                 self.train_step(batch_x, self.batch_y, encoder)
+
+                yhat_norm = torch.sigmoid(self.loss_fn.discr_matr).detach().numpy()
+                yhat_norm[yhat_norm > 0.5] = 1
+                yhat_norm[yhat_norm <= 0.5] = 0
+
+                evaluate(yhat_norm, self.loss_fn.mask.detach().numpy(), mode="accuracy")
+
+                acc = evaluate(
+                    yhat_norm, self.loss_fn.mask.detach().numpy(), mode="accuracy")
+                prec = evaluate(
+                    yhat_norm, self.loss_fn.mask.detach().numpy(), mode="precision")
+                auc = evaluate(
+                    yhat_norm, self.loss_fn.mask.detach().numpy(), mode="auc")
+
+                train_batch_metric["accuracy"] = (train_batch_metric["accuracy"] + [acc]
+                                                if "accuracy" in train_batch_metric
+                                                else [acc])
+                train_batch_metric["precision"] = (train_batch_metric["precision"] + [prec]
+                                                 if "precision" in train_batch_metric
+                                                 else [prec])
+                train_batch_metric["auc"] = (train_batch_metric["auc"] + [auc]
+                                           if "auc" in train_batch_metric
+                                           else [auc])
 
                 if encoder is None and callable(track):
                     track("train_step")
 
                 # if callable(track):
                 #     track("training")
+            
 
             if not isinstance(self.yhat, tuple):
                 self.train_metric = evaluate(self.train_pred, self.train_label)
-                self.train_metrics.append(self.train_metric)
+                # self.train_metrics.append(self.train_metric)
+                self.train_metrics["top-k"] = (self.train_metric["top-k"] + [self.train_metric]
+                                               if "top-k" in self.train_metric
+                                               else [self.train_metric])
                 self.train_pred = np.array([])
                 self.train_label = np.array([])
             else:
-                yhat_norm = torch.sigmoid(self.loss_fn.discr_matr)
-                yhat_norm[yhat_norm > 0.5] = 1
-                yhat_norm[yhat_norm <= 0.5] = 0
-
-                loss_acc = (yhat_norm == self.loss_fn.mask).sum() / torch.numel(self.loss_fn.mask)
-                self.train_metrics.append(loss_acc)
+                acc = np.mean(train_batch_metric["accuracy"])
+                prec = np.mean(train_batch_metric["precision"])
+                auc =  np.mean(train_batch_metric["auc"])
+                self.train_metrics["accuracy"] = (self.train_metrics["accuracy"] + [acc]
+                                                if "accuracy" in self.train_metrics
+                                                else [acc])
+                self.train_metrics["precision"] = (self.train_metrics["precision"] + [prec]
+                                                 if "precision" in self.train_metrics
+                                                 else [prec])
+                self.train_metrics["auc"] = (self.train_metrics["auc"] + [auc]
+                                           if "auc" in self.train_metrics
+                                           else [auc])
+                train_batch_metric = {}
 
             self.phase = "validation"
             if self.val_loader is not None:
@@ -296,40 +346,81 @@ class Solver():
                 with torch.no_grad():
                     self.val_pred = np.array([])
                     self.val_label = np.array([])
+                    val_batch_metric = {}
                     #### Validate ####
                     # self.model.eval()
                     for self.batch, (batch_x, self.batch_y) in enumerate(tqdm(self.val_loader, disable=False, leave=False,
-                                                                        desc=f'Vali. Batch (Epoch: {self.epoch})')):
+                                                                              desc=f'Vali. Batch (Epoch: {self.epoch})')):
                         self.val_step(batch_x, self.batch_y, encoder)
 
-                    if not isinstance(self.yhat, tuple) and len(self.val_loader) > 0:
-                        self.val_metric = evaluate(self.val_pred, self.val_label)
-                        self.val_metrics.append(self.val_metric)
-                        self.val_pred = np.array([])
-                        self.val_label = np.array([])
-                    else:
-                        yhat_norm = torch.sigmoid(self.loss_fn.discr_matr)
+                        yhat_norm = torch.sigmoid(self.loss_fn.discr_matr).detach().numpy()
                         yhat_norm[yhat_norm > 0.5] = 1
                         yhat_norm[yhat_norm <= 0.5] = 0
 
-                        loss_acc = (yhat_norm == self.loss_fn.mask).sum() / torch.numel(self.loss_fn.mask)
+                        evaluate(yhat_norm, self.loss_fn.mask.detach().numpy(), mode="accuracy")
 
-                        self.val_metrics.append(loss_acc)
+                        acc = evaluate(
+                            yhat_norm, self.loss_fn.mask.detach().numpy(), mode="accuracy")
+                        prec = evaluate(
+                            yhat_norm, self.loss_fn.mask.detach().numpy(), mode="precision")
+                        auc = evaluate(
+                            yhat_norm, self.loss_fn.mask.detach().numpy(), mode="auc")
+
+                        val_batch_metric["accuracy"] = (val_batch_metric["accuracy"] + [acc]
+                                                        if "accuracy" in val_batch_metric
+                                                        else [acc])
+                        val_batch_metric["precision"] = (val_batch_metric["precision"] + [prec]
+                                                        if "precision" in val_batch_metric
+                                                        else [prec])
+                        val_batch_metric["auc"] = (val_batch_metric["auc"] + [auc]
+                                                if "auc" in val_batch_metric
+                                                else [auc])
+
+
+                    if not isinstance(self.yhat, tuple) and len(self.val_loader) > 0:
+                        self.val_metric = evaluate(
+                            self.val_pred, self.val_label)
+                        # self.val_metrics.append(self.val_metric)
+                        self.val_metrics["top-k"] = (self.val_metrics["top-k"] + [self.val_metric]
+                                                     if "top-k" in self.val_metrics
+                                                     else [self.val_metric])
+                        self.val_pred = np.array([])
+                        self.val_label = np.array([])
+                    else:
+                        acc = np.mean(val_batch_metric["accuracy"])
+                        prec = np.mean(val_batch_metric["precision"])
+                        auc =  np.mean(val_batch_metric["auc"])                     
+                        self.val_metrics["val. accuracy"] = (self.val_metrics["val. accuracy"] + [acc]
+                                                        if "val. accuracy" in self.val_metrics
+                                                        else [acc])
+                        self.val_metrics["val. precision"] = (self.val_metrics["val. precision"] + [prec]
+                                                         if "val. precision" in self.val_metrics
+                                                         else [prec])
+                        self.val_metrics["val. auc"] = (self.val_metrics["val. auc"] + [auc]
+                                                   if "val. auc" in self.val_metrics
+                                                   else [auc])
+                        val_batch_metric = {}
 
                     # TODO: CHeck this
-                    self.val_losses.append(np.mean(self.val_batch_losses) if len(self.val_batch_losses) > 0 else 0)
+                    self.val_losses.append(np.mean(self.val_batch_losses) if len(
+                        self.val_batch_losses) > 0 else 0)
                     self.val_batch_losses = []
 
             idx = self.epoch * len(self.train_loader)
-            self.train_losses.append(np.mean(self.train_batch_losses[idx:idx+len(self.train_loader)]) if len(self.train_batch_losses) > 0 else 0)
+            self.train_losses.append(np.mean(self.train_batch_losses[idx:idx+len(
+                self.train_loader)]) if len(self.train_batch_losses) > 0 else 0)
             # self.train_batch_losses = []
-
-            pbar.set_description(f'Epochs ({self.model.__class__.__name__})' + \
-                                 f'(Train Acc.: {"%.2f"%np.max(self.train_metrics)}, Val. Acc.: {"%.2f"%np.max(self.val_metrics)})')
+            if ("val. accuracy" in self.val_metrics and
+                "val. precision" in self.val_metrics and
+                "val. auc" in self.val_metrics):
+                pbar.set_description(f'Epochs ({self.model.__class__.__name__})' +
+                                     f'(Val (max) - acc: {"%.2f"%np.max(self.val_metrics["val. accuracy"])},' +
+                                     f'prec: {"%.2f"%np.max(self.val_metrics["val. precision"])},' +
+                                     f'auc: {"%.2f"%np.max(self.val_metrics["val. auc"])})')
 
             if callable(track):
                 track("epoch")
-            
+
     def test(self, test_config: dict = None, track: object = None, encoder: nn.Module = None):
         """ Function to test the model.
 
@@ -363,9 +454,11 @@ class Solver():
                 # The train loader returns dim (batch_size, frames, nodes, features)
                 try:
                     if isinstance(batch_x, torch.Tensor):
-                        batch_x = batch_x.type("torch.FloatTensor").permute(0,3,2,1)
+                        batch_x = batch_x.type(
+                            "torch.FloatTensor").permute(0, 3, 2, 1)
                     else:
-                        batch_x = torch.tensor(batch_x, dtype=torch.float32).permute(0,3,2,1)
+                        batch_x = torch.tensor(
+                            batch_x, dtype=torch.float32).permute(0, 3, 2, 1)
                 except:
                     # For testing MLP on iris
                     batch_x = torch.tensor(batch_x, dtype=torch.float32)
@@ -383,8 +476,10 @@ class Solver():
                 else:
                     self.yhat_idx = torch.argsort(self.yhat, descending=True)
 
-                    self.predictions = np.vstack([self.predictions, self.yhat_idx.detach().cpu().numpy()]) if self.predictions.size else self.yhat_idx.detach().cpu().numpy()
-                    self.labels = np.append(self.labels, self.batch_y.detach().cpu().numpy())
+                    self.predictions = np.vstack([self.predictions, self.yhat_idx.detach().cpu(
+                    ).numpy()]) if self.predictions.size else self.yhat_idx.detach().cpu().numpy()
+                    self.labels = np.append(
+                        self.labels, self.batch_y.detach().cpu().numpy())
 
             self.metric = evaluate(self.predictions, self.labels)
 
@@ -392,58 +487,13 @@ class Solver():
                 track("evaluation")
 
             return self.metric
-    
-def evaluate(predictions: np.array, labels: np.array, mode: str = "top-k"):
-    """ Function to calculate the evaluation metric.
-            Parameters:
-            predictions: np.array
-                    Array with the predicted values, sorted by its probability
-                labels: np.array
-                    Corresponding ground truth for the predicted values.
-                mode: str (not used yet)
-                    Mode to decide with evaluation should be used.
-            Return:
-                tuple: tuple containing the evaluation metrics.
-        """
-
-    k = 1  # Top-k
-    correct = np.sum([l in pred for l, pred in zip(labels, np.asarray(predictions)[:,:k])])
-    top1 = (correct/len(labels))
-
-    k = 5  # Top-k
-    correct = np.sum([l in pred for l, pred in zip(labels, np.asarray(predictions)[:,:k])])
-    top5 = (correct/len(labels))
-
-    # accuracy 
-    return top1, top5
-    
-    # def evaluate_embedding(embeddings, labels, search=True):
-    #     labels = preprocessing.LabelEncoder().fit_transform(labels)
-    #     x, y = np.array(embeddings), np.array(labels)
-    #     # print(x.shape, y.shape)
-
-    #     logreg_accuracies = [logistic_classify(x, y) for _ in range(1)]
-    #     # print(logreg_accuracies)
-    #     print('LogReg', np.mean(logreg_accuracies))
-
-    #     svc_accuracies = [svc_classify(x,y, search) for _ in range(1)]
-    #     # print(svc_accuracies)
-    #     print('svc', np.mean(svc_accuracies))
-
-    #     linearsvc_accuracies = [linearsvc_classify(x, y, search) for _ in range(1)]
-    #     # print(linearsvc_accuracies)
-    #     print('LinearSvc', np.mean(linearsvc_accuracies))
-
-    #     randomforest_accuracies = [randomforest_classify(x, y, search) for _ in range(1)]
-    #     # print(randomforest_accuracies)
-    #     print('randomforest', np.mean(randomforest_accuracies))
 
     def __repr__(self):
         """ String representation of the solver.
         """
         representation = f"Solver (model: {self.model.__class__.__name__})\n"
         representation += f"# Model Parameters: {self.model.paramters}\n"
-            
+
         if len(self.train_losses) == 0:
             # Not trained yet!
             representation += "+-- Not trained yet!"
@@ -453,3 +503,50 @@ def evaluate(predictions: np.array, labels: np.array, mode: str = "top-k"):
             representation += f"+-- Num. of epochs: {self.train_cfg['n_epochs']}"
 
         return representation
+
+
+def evaluate(predictions: np.array, labels: np.array, mode: str = "top-k"):
+    """ Function to calculate the evaluation metric.
+            Parameters:
+                predictions: np.array
+                    Array with the predicted values.
+                labels: np.array
+                    Corresponding ground truth for the predicted values.
+                mode: str (not used yet)
+                    Mode to decide with evaluation should be used.
+            Return:
+                tuple: tuple containing the evaluation metrics.
+        """
+    if mode == "top-k":
+        # Here predictions need to be sorted!
+        k = 1  # Top-k
+        correct = np.sum([l in pred for l, pred in zip(
+            labels, np.asarray(predictions)[:, :k])])
+        top1 = (correct/len(labels))
+
+        k = 5  # Top-k
+        correct = np.sum([l in pred for l, pred in zip(
+            labels, np.asarray(predictions)[:, :k])])
+        top5 = (correct/len(labels))
+
+        metric = (top1, top5)
+    elif mode == "accuracy":
+        metric = (predictions.flatten() == labels.flatten()
+                  ).sum() / len(labels.flatten())
+    elif mode == "precision":
+        # Works only for
+        TP = ((predictions.flatten() == 1) & (labels.flatten() == 1)).sum()
+        FP = ((predictions.flatten() == 1) & (labels.flatten() == 0)).sum()
+        metric = TP / (TP+FP) if TP != 0 else 0
+    elif mode == "recall":
+        # Works only for
+        TP = ((predictions == 1) & (labels == 1)).sum()
+        FN = ((predictions == 0) & (labels == 0)).sum()
+        metric = TP / (TP+FN) if TP != 0 else 0
+    elif mode == "auc":
+        fpr, tpr, thresholds = metrics.roc_curve(
+            labels.flatten(), predictions.flatten())
+        metric = metrics.auc(fpr, tpr)
+
+    # accuracy
+    return metric

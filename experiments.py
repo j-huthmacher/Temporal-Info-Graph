@@ -228,8 +228,15 @@ class Experiment():
                 self.classifier = torch.load(f"{path}TIG_MLP.pt")#.cuda()
                 self.clf_train_loss = np.load(f"{path}TIG_MLP.train_losses.npy")
                 self.clf_val_loss = np.load(f"{path}TIG_MLP.val_losses.npy")
-                self.clf_train_metrics = np.load(f"{path}TIG_MLP.train.metrics.npy")
-                self.clf_val_metrics = np.load(f"{path}TIG_MLP.val.metrics.npy")
+                try:
+                    self.clf_train_metrics = np.load(f"{path}TIG_MLP.train.metrics.npz")
+                    self.clf_val_metrics = np.load(f"{path}TIG_MLP.val.metrics.npz")
+                except:
+                    # Legacy support
+                    self.clf_train_metrics = {}
+                    self.clf_val_metrics = {}
+                    self.clf_train_metrics["top-k"] = np.load(f"{path}TIG_MLP.train.metrics.npy")
+                    self.clf_val_metrics["val. top-k"]  = np.load(f"{path}TIG_MLP.val.metrics.npy")
             except:  #pylint: disable=bare-except
                 # Not each experiement has  a classifier
                 pass
@@ -245,9 +252,13 @@ class Experiment():
 
             #### TIG Train Metric ####
             try:
-                self.tig_train_metrics = np.load(f"{path}TIG_train.metrics.npy")
-                self.tig_val_metrics = np.load(f"{path}TIG_val.metrics.npy")
+                self.tig_train_metrics = np.load(f"{path}TIG_train.metrics.npz")
+                self.tig_val_metrics = np.load(f"{path}TIG_val.metrics.npz")
             except:  #pylint: disable=bare-except
+                self.tig_train_metrics = {}
+                self.tig_val_metrics = {}
+                self.tig_train_metrics["top-k"] = np.load(f"{path}TIG_train.metrics.npy")
+                self.tig_val_metrics["val. top-k"]  = np.load(f"{path}TIG_val.metrics.npy")
                 pass
 
             with open(f"{path}config.json") as file:
@@ -256,6 +267,7 @@ class Experiment():
             
             #### Set Up Logging ####
             self.log = create_logger(fpath = self.config["exp_path"], name="EXP Logger", suffix="EXP_")
+
         else:
             slurm, jhost = connect_to_slurm()
             sftp = SFTPClient.from_transport(slurm.get_transport())
@@ -304,20 +316,31 @@ class Experiment():
                 f.prefetch()
                 f = f.read()
                 self.clf_val_loss = np.load(io.BytesIO(f))
-                f = sftp.open(f"{path}TIG_MLP.train.metrics.npy")
-                f.prefetch()
-                f = f.read()
-                self.clf_train_metrics = np.load(io.BytesIO(f))
-                f = sftp.open(f"{path}TIG_MLP.val.metrics.npy")
-                f.prefetch()
-                f = f.read()
-                self.clf_val_metrics = np.load(io.BytesIO(f))
+                try:
+                    f = sftp.open(f"{path}TIG_MLP.train.metrics.npz")
+                    f.prefetch()
+                    f = f.read()
+                    self.clf_train_metrics = np.load(io.BytesIO(f))
+                    f = sftp.open(f"{path}TIG_MLP.val.metrics.npz")
+                    f.prefetch()
+                    f = f.read()
+                except:
+                    self.clf_train_metrics = {}
+                    self.clf_val_metrics = {}
+                    f = sftp.open(f"{path}TIG_MLP.train.metrics.npy")
+                    f.prefetch()
+                    f = f.read()
+                    self.clf_train_metrics["top-k"] = np.load(io.BytesIO(f))
+                    f = sftp.open(f"{path}TIG_MLP.val.metrics.npy")
+                    f.prefetch()
+                    f = f.read()
+                    self.clf_val_metrics["val. top-k"] = np.load(io.BytesIO(f))
                 f = sftp.open(f"{path}TIG_MLP.pt")
                 f.prefetch()
                 f = f.read()
                 self.classifier = torch.load(io.BytesIO(f))#.cuda()
             except:  #pylint: disable=bare-except
-                # Not each experiement has  a classifier
+                # Not each experiement has  a classifier                
                 pass
             
             #### TIG Model/Losses ####
@@ -340,15 +363,25 @@ class Experiment():
                 
             #### TIG Train Metric ####
             try:
-                f = sftp.open(f"{path}TIG_train.metrics.npy")
+                f = sftp.open(f"{path}TIG_train.metrics.npz")
                 f.prefetch()
                 f = f.read()
                 self.tig_train_metrics = np.load(io.BytesIO(f))
-                f = sftp.open(f"{path}TIG_train.metrics.npy")
+                f = sftp.open(f"{path}TIG_train.metrics.npz")
                 f.prefetch()
                 f = f.read()
                 self.tig_val_metrics = np.load(io.BytesIO(f))
             except:  #pylint: disable=bare-except
+                self.tig_train_metrics = {}
+                self.tig_val_metrics = {}
+                f = sftp.open(f"{path}TIG_train.metrics.npy")
+                f.prefetch()
+                f = f.read()
+                self.tig_train_metrics["top-k"] = np.load(io.BytesIO(f))
+                f = sftp.open(f"{path}TIG_train.metrics.npy")
+                f.prefetch()
+                f = f.read()
+                self.tig_val_metrics["val. top-k"] = np.load(io.BytesIO(f))
                 pass
                 
             #### TIG Train Metric ####
@@ -457,15 +490,21 @@ class Experiment():
         """
         fig = plt.figure(figsize=figsize, constrained_layout=True)
         gs = fig.add_gridspec(4, 2)
+        fig.suptitle(f"Experiment: {os.path.normpath(self.path).split(os.sep)[-1]}")    
 
         #### Embeddings ####
         ax = fig.add_subplot(gs[:, 0])
-        plot_emb(self.emb_x, self.emb_y, ax = ax, title="Embeddings", mode=mode)
+        try:
+            plot_emb(self.emb_x, self.emb_y, ax = ax, title="Embeddings", mode=mode)
+        except:
+            pass
 
         #### TIG/MLP Loss/Metrics ####
-        ax = fig.add_subplot(gs[0, 1])
+        
+        ax = fig.add_subplot(gs[0, 1]) if hasattr(self, "clf_train_loss") else fig.add_subplot(gs[0:2, 1])
         self.plot_curve(name="TIG.loss", ax = ax)
-        ax = fig.add_subplot(gs[1, 1])
+
+        ax = fig.add_subplot(gs[1, 1]) if hasattr(self, "clf_train_loss") else fig.add_subplot(gs[2:, 1])
         self.plot_curve(name="TIG.metric", ax = ax)
 
         if hasattr(self, "clf_train_loss"):
@@ -473,24 +512,20 @@ class Experiment():
             self.plot_curve(name="MLP.loss", ax = ax)
             ax = fig.add_subplot(gs[3, 1])
             self.plot_curve(name="MLP.metric", ax = ax)
-        else:
-            try:
-                ax = fig.add_subplot(gs[2:, 1])
-                i = io.BytesIO(self.img["MLP.loss.metric.final.png"])
-                i = mpimg.imread(i, format='PNG')
+        # else:
+        #     try:
+        #         ax = fig.add_subplot(gs[2:, 1])
+        #         i = io.BytesIO(self.img["MLP.loss.metric.final.png"])
+        #         i = mpimg.imread(i, format='PNG')
 
-                ax.imshow(i, interpolation='none', aspect='auto')
-            except:
-                pass
-            ax.axis('off')
-
-        fig.tight_layout()
-
-        fig.suptitle(f"Experiment: {os.path.normpath(self.path).split(os.sep)[-1]}")
+        #         ax.imshow(i, interpolation='none', aspect='auto')
+        #     except:
+        #         pass
+        #     ax.axis('off')
 
         return fig
 
-    def plot_curve(self, name="TIG.loss", ax = None):
+    def plot_curve(self, name="TIG.loss", ax = None, which=None):
         """
         """
         args = None
@@ -507,13 +542,22 @@ class Experiment():
             elif name == "TIG.metric"  and hasattr(self, "tig_train_metrics"):
                 model_name = "TIG: "
                 title = "Metric"
+
                 args = {
-                    "data": {
-                        "TIG Train Metric": self.tig_train_metrics,
-                        "TIG Val Metric": self.tig_val_metrics
-                        },
                     "line_mode": np.mean
                     }
+
+                if which is None:
+                    args["data"] = {**self.tig_train_metrics, **self.tig_val_metrics}
+
+                # if self.tig_train_metrics.shape[1] >
+                #     "data": {
+                #         "TIG Train Metric": self.tig_train_metrics,
+                #         "TIG Val Metric": self.tig_val_metrics
+                #         },
+                    
+                #     }
+
             elif name == "MLP.loss":
                 model_name = "MLP: "
                 title = "Loss (Cross Entropy)"
@@ -536,6 +580,7 @@ class Experiment():
                         },
                     "line_mode": np.mean
                     }
+                
                 if hasattr(self, "clf_val_metrics"):
                     args["data"]["MLP Top-1 Acc. (Val)"]  = np.array(self.clf_val_metrics)[:, 0]
                     args["data"]["MLP Top-5 Acc. (Val)"]  = np.array(self.clf_val_metrics)[:, 1]

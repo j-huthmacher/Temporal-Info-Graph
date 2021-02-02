@@ -383,7 +383,7 @@ class TemporalInfoGraph(nn.Module):
             X = tempConv2(X)  # (batch_size, ch_out, nodes, time)
             X = activation(X + res)
 
-        Z = X.mean(dim=2)
+        Z = X.mean(dim=3)
 
         # Mean readout: Average each feature over all nodes --> dimension (features, 1)
         # Average over dimension 2, dim 2 corresponds to the nodes

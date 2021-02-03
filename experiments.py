@@ -8,6 +8,7 @@ import pprint
 from datetime import datetime
 from tqdm import tqdm
 from pathlib import Path
+import plotly.express as px
 
 import numpy as np
 import torch
@@ -28,6 +29,8 @@ from paramiko import SSHClient, SSHConfig, AutoAddPolicy, SFTPClient
 
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
+
+import matplotlib.gridspec as gridspec
 import seaborn as sns
 
 import sacred
@@ -231,12 +234,21 @@ class Experiment():
                 try:
                     self.clf_train_metrics = np.load(f"{path}TIG_MLP.train.metrics.npz")
                     self.clf_val_metrics = np.load(f"{path}TIG_MLP.val.metrics.npz")
+                    if "top-k" in self.clf_val_metrics:
+                        self.clf_val_metrics = {}
+                        self.clf_val_metrics["val. top-1"] = np.load(f"{path}TIG_MLP.val.metrics.npz")["top-k"][:, 0]
+                        self.clf_val_metrics["val. top-5"] = np.load(f"{path}TIG_MLP.val.metrics.npz")["top-k"][:, 1]
+                        self.clf_train_metrics = {}
+                        self.clf_train_metrics["top-1"] = np.load(f"{path}TIG_MLP.train.metrics.npz")["top-k"][:, 0]
+                        self.clf_train_metrics["top-5"] = np.load(f"{path}TIG_MLP.train.metrics.npz")["top-k"][:, 1]
                 except:
                     # Legacy support
                     self.clf_train_metrics = {}
                     self.clf_val_metrics = {}
-                    self.clf_train_metrics["top-k"] = np.load(f"{path}TIG_MLP.train.metrics.npy")
-                    self.clf_val_metrics["val. top-k"]  = np.load(f"{path}TIG_MLP.val.metrics.npy")
+                    self.clf_train_metrics["top-1"] = np.load(f"{path}TIG_MLP.train.metrics.npy")[:, 0]
+                    self.clf_val_metrics["val. top-1"]  = np.load(f"{path}TIG_MLP.val.metrics.npy")[:, 0]
+                    self.clf_train_metrics["top-5"] = np.load(f"{path}TIG_MLP.train.metrics.npy")[:, 1]
+                    self.clf_val_metrics["val. top-5"]  = np.load(f"{path}TIG_MLP.val.metrics.npy")[:, 1]
             except:  #pylint: disable=bare-except
                 # Not each experiement has  a classifier
                 pass
@@ -257,8 +269,8 @@ class Experiment():
             except:  #pylint: disable=bare-except
                 self.tig_train_metrics = {}
                 self.tig_val_metrics = {}
-                self.tig_train_metrics["top-k"] = np.load(f"{path}TIG_train.metrics.npy")
-                self.tig_val_metrics["val. top-k"]  = np.load(f"{path}TIG_val.metrics.npy")
+                # self.tig_train_metrics["top-k"] = np.load(f"{path}TIG_train.metrics.npy")
+                # self.tig_val_metrics["val. top-k"]  = np.load(f"{path}TIG_val.metrics.npy")
                 pass
 
             with open(f"{path}config.json") as file:
@@ -330,11 +342,13 @@ class Experiment():
                     f = sftp.open(f"{path}TIG_MLP.train.metrics.npy")
                     f.prefetch()
                     f = f.read()
-                    self.clf_train_metrics["top-k"] = np.load(io.BytesIO(f))
+                    self.clf_train_metrics["top-1"] = np.load(io.BytesIO(f))[:,0]
+                    self.clf_train_metrics["top-5"] = np.load(io.BytesIO(f))[:,1]
                     f = sftp.open(f"{path}TIG_MLP.val.metrics.npy")
                     f.prefetch()
                     f = f.read()
-                    self.clf_val_metrics["val. top-k"] = np.load(io.BytesIO(f))
+                    self.clf_val_metrics["val. top-1"] = np.load(io.BytesIO(f))[:,0]
+                    self.clf_val_metrics["val. top-5"] = np.load(io.BytesIO(f))[:,1]
                 f = sftp.open(f"{path}TIG_MLP.pt")
                 f.prefetch()
                 f = f.read()
@@ -469,7 +483,7 @@ class Experiment():
         representation += f"--- Embedding Shape: {self.emb_x.shape if self.emb_x is not None else 'Not Finished'}\n"
 
         return representation
-    
+
     def tensorboard(self, replace=False):
         """
         """
@@ -488,7 +502,11 @@ class Experiment():
     def plot_dash(self, figsize=(14, 7), mode="PCA"):
         """
         """
+        plt.rcParams['figure.constrained_layout.use'] = True
         fig = plt.figure(figsize=figsize, constrained_layout=True)
+        # gs = gridspec.GridSpec(4,2, figure=fig)
+
+
         gs = fig.add_gridspec(4, 2)
         fig.suptitle(f"Experiment: {os.path.normpath(self.path).split(os.sep)[-1]}")    
 
@@ -496,6 +514,7 @@ class Experiment():
         ax = fig.add_subplot(gs[:, 0])
         try:
             plot_emb(self.emb_x, self.emb_y, ax = ax, title="Embeddings", mode=mode)
+            # ax.set_aspect("equal", adjustable="box")
         except:
             pass
 
@@ -507,7 +526,7 @@ class Experiment():
         ax = fig.add_subplot(gs[1, 1]) if hasattr(self, "clf_train_loss") else fig.add_subplot(gs[2:, 1])
         self.plot_curve(name="TIG.metric", ax = ax)
 
-        if hasattr(self, "clf_train_loss"):
+        if hasattr(self, "clf_train_loss") and len(self.clf_train_loss) > 0:
             ax = fig.add_subplot(gs[2, 1])
             self.plot_curve(name="MLP.loss", ax = ax)
             ax = fig.add_subplot(gs[3, 1])
@@ -532,11 +551,11 @@ class Experiment():
         try:
             if name == "TIG.loss":
                 model_name = "TIG: "
-                title = "Loss (JSD)"
+                title = "Loss" + ("BCE" if "loss" in self.config and self.config["loss"] == "bce" else "JSD")
                 args = {
                     "data": {
-                        "TIG Train Loss (JSD MI)": self.tig_train_loss,
-                        "TIG Val Loss (JSD MI)": self.tig_val_loss
+                        "Train Loss": self.tig_train_loss,
+                        "Val Loss": self.tig_val_loss
                         }
                     }
             elif name == "TIG.metric"  and hasattr(self, "tig_train_metrics"):
@@ -550,22 +569,14 @@ class Experiment():
                 if which is None:
                     args["data"] = {**self.tig_train_metrics, **self.tig_val_metrics}
 
-                # if self.tig_train_metrics.shape[1] >
-                #     "data": {
-                #         "TIG Train Metric": self.tig_train_metrics,
-                #         "TIG Val Metric": self.tig_val_metrics
-                #         },
-                    
-                #     }
-
             elif name == "MLP.loss":
                 model_name = "MLP: "
                 title = "Loss (Cross Entropy)"
 
                 args = {
                     "data": {
-                        "MLP Train Loss (JSD MI)": self.clf_train_loss,
-                        "MLP Val Loss (JSD MI)": self.clf_val_loss
+                        "Train Loss": self.clf_train_loss,
+                        "Val Loss": self.clf_val_loss
                         }
                     }
             elif name == "MLP.metric" and hasattr(self, "clf_val_metrics") and hasattr(self, "clf_train_metrics"):
@@ -573,17 +584,13 @@ class Experiment():
                 title = "Accuracy (Top-1, Top-5)"
 
                 args = {
-                    "data": {
-                        "MLP Top-1 Acc. (Train)": np.array(self.clf_train_metrics)[:, 0],
-                        "MLP Top-5 Acc. (Train)": np.array(self.clf_train_metrics)[:, 1],
-                        
-                        },
+                    "data": self.clf_train_metrics,
                     "line_mode": np.mean
                     }
-                
                 if hasattr(self, "clf_val_metrics"):
-                    args["data"]["MLP Top-1 Acc. (Val)"]  = np.array(self.clf_val_metrics)[:, 0]
-                    args["data"]["MLP Top-5 Acc. (Val)"]  = np.array(self.clf_val_metrics)[:, 1]
+                    args["data"] = {**self.clf_train_metrics, **self.clf_val_metrics}
+
+
         except Exception as e:
             print(e)
             if ax is not None:
@@ -592,10 +599,10 @@ class Experiment():
         if args is not None:
             return plot_curve(**args, title=title, model_name=model_name, ax=ax)
 
-    def plot_emb(self, mode="PCA"):
+    def plot_emb(self, mode="PCA", label=None):
         """
         """
-        return plot_emb(self.emb_x, self.emb_y, mode=mode)
+        return plot_emb(self.emb_x, self.emb_y, mode=mode, label = label)
 
     def plot_class_distr(self):
         fig, ax = plt.subplots(figsize=(7,5))
@@ -616,9 +623,9 @@ class Experiment():
         """
         if hasattr(self, "clf_val_metrics"):
             if hasattr(self, "log"):
-                self.log.info(f"(Pipeline) MLP Accuracy: {np.max(self.clf_val_metrics, axis=0)}")
+                self.log.info(f"(Pipeline) MLP Accuracy: {np.max(self.clf_val_metrics['val. top-1'])}, {np.max(self.clf_val_metrics['val. top-5'])}")
             else:
-                print(f"(Pipeline) MLP Accuracy: {np.max(self.clf_val_metrics, axis=0)}")
+                print(f"(Pipeline) MLP Accuracy: {np.max(self.clf_val_metrics['val. top-1'])}, {np.max(self.clf_val_metrics['val. top-5'])}")
     
         #### SVM Classifier ####
         if which is None or "svm" in which:
@@ -710,23 +717,35 @@ class Experiment():
                 f.write(f"Random Forest Avg. Accuracy (top-1): {acc}\n")
                 f.close()
 
-    def plot_emb_3D(self, gif_path: str = None):
+    def plot_emb_3D(self, gif_path: str = None, plotly= True, label=None):
         """
         """
         pca = PCA(n_components=3, random_state=123)
-        x = pca.fit_transform(self.emb_x)
+        x = self.emb_x
+        y = self.emb_y
+
+        if label is not None:
+            x = x[np.isin(y, label)]
+            y = y[np.isin(y, label)]
+        x = pca.fit_transform(x)
+
+        if plotly:
+            fig = px.scatter_3d(x=x[:, 0], y=x[:, 1], z=x[:, 2], 
+              color=y.astype(int))#,  colorscale='Viridis')#colormap=sns.color_palette("Spectral", as_cmap=True))
+            fig.show()
+            return
 
         for angle in tqdm(range(0, 360, 2)):
-
-            fig = plt.figure()
+            fig = plt.figure(figsize=(8,8))
             ax = fig.add_subplot(111, projection='3d')
 
-            ax.scatter(x[:, 0], x[:, 1], x[:, 2],  c=self.emb_y.astype(int), cmap=sns.color_palette("Spectral", as_cmap=True))
+            ax.scatter(x[:, 0], x[:, 1], x[:, 2],  c=y.astype(int), cmap=sns.color_palette("Spectral", as_cmap=True))
             ax.view_init(10, angle)
             ax.set_facecolor("white")
 
             if gif_path is not None:
                 create_gif(fig, path=gif_path, name="embeddings_3d.gif")
+                plt.close()
             else:
                 break
 

@@ -69,9 +69,9 @@ class TestModel(unittest.TestCase):
                                 A=A, discriminator_layer=False)
 
         gbl, lcl = tig(X, A)
-        self.assertTrue(gbl.shape, (2, 7))  # (num_graphs, emb_dim)
+        self.assertEqual(tuple(gbl.shape), (1, 7))  # (num_graphs, emb_dim)
         # (num_graphs, emb_dim, num_nodes)
-        self.assertTrue(lcl.shape, (2, 7, 3))
+        self.assertEqual(tuple(lcl.shape), (1, 7, 3))
 
         # torch.set_printoptions(precision=10, sci_mode=False)
         # local_shape = lcl.shape
@@ -120,9 +120,9 @@ class TestModel(unittest.TestCase):
 
         gbl, lcl = tig(X, A)
 
-        self.assertTrue(gbl.shape, (3, 4))  # (num_graphs, emb_dim)
+        self.assertEqual(gbl.shape, (3, 4))  # (num_graphs, emb_dim)
         # (num_graphs, emb_dim, num_nodes)
-        self.assertTrue(lcl.shape, (3, 4, 4))
+        self.assertEqual(lcl.shape, (3, 4, 4))
 
     def test_tig_encoder(self):
         """
@@ -151,9 +151,9 @@ class TestModel(unittest.TestCase):
         tig = TemporalInfoGraph(architecture=architecture, A=A)
 
         gbl, lcl = tig(X)
-        self.assertTrue(gbl.shape, (2, 7))  # (num_graphs, emb_dim)
+        self.assertEqual(tuple(gbl.shape), (1, 7))  # (num_graphs, emb_dim)
         # (num_graphs, emb_dim, num_nodes)
-        self.assertTrue(lcl.shape, (2, 7, 3))
+        self.assertEqual(tuple(lcl.shape), (1, 7, 3))
 
         # torch.set_printoptions(precision=10, sci_mode=False)
         # print(lcl.detach())
@@ -205,9 +205,9 @@ class TestModel(unittest.TestCase):
         tig = TemporalInfoGraph(architecture=architecture, A=A, residual=True, edge_weights=True)
 
         gbl, lcl = tig(X)
-        self.assertTrue(gbl.shape, (2, 7))  # (num_graphs, emb_dim)
+        self.assertEqual(tuple(gbl.shape), (1, 7))  # (num_graphs, emb_dim)
         # (num_graphs, emb_dim, num_nodes)
-        self.assertTrue(lcl.shape, (2, 7, 3))
+        self.assertEqual(tuple(lcl.shape), (1, 7, 3))
 
         # torch.set_printoptions(precision=10, sci_mode=False)
         # print(lcl.detach())

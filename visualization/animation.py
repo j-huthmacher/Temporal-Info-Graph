@@ -47,7 +47,7 @@ def create_gif(fig: Any, path: str, name: str):
     else:
         # fig is a matplot figure
         buf = io.BytesIO()
-        fig.savefig(buf, format='png', bbox_inches="tight")
+        fig.savefig(buf, format='png', bbox_inches="tight", dpi=150)
         buf.seek(0)
 
         im = Image.open(buf)

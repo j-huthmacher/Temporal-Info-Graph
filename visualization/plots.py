@@ -20,7 +20,7 @@ plt.style.use('seaborn')
 
 #### Single Plots ####
 def plot_emb(x: np.array, y: np.array, title: str = "", ax: matplotlib.axes.Axes = None,
-             count: bool = False, mode: str = "PCA"):
+             count: bool = False, mode: str = "PCA", label=None):
     """ Plot embeddings.
 
         Paramters:
@@ -44,6 +44,10 @@ def plot_emb(x: np.array, y: np.array, title: str = "", ax: matplotlib.axes.Axes
         x = x.detach().cpu().numpy()
     
     mode_str = ""
+
+    if label is not None:
+        x = x[np.isin(y, label)]
+        y = y[np.isin(y, label)]
 
     if x.shape[1] > 2:
         mode_str = f"({mode})"
@@ -177,8 +181,21 @@ def plot_curve(data: dict, ax: matplotlib.axes.Axes = None, n_epochs: int = None
             n_batches: int
                 Number of batches. If provided it is used to determine the x-axis ticks.
     """
+    legend_pos = {
+        "loc": 'upper left',
+        "bbox_to_anchor": (1, 1)
+    }
+
+    # legend_pos = {
+    #         "loc": 'upper left',
+    #         "bbox_to_anchor": (0, -0.2)
+    #     }
     if ax is None:
         fig, ax = plt.subplots(figsize=(10,3))
+        legend_pos = {
+            "loc": 'upper center',
+            "bbox_to_anchor": (0.5, -0.2)
+        }
 
     for i, name in enumerate(data):
         l = data[name]
@@ -198,8 +215,12 @@ def plot_curve(data: dict, ax: matplotlib.axes.Axes = None, n_epochs: int = None
     ax.set_title(f"{model_name} {title}")
     ax.figure.tight_layout()
     handles, labels = ax.get_legend_handles_labels()
-    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2),
-              fancybox=True, shadow=True, ncol=len(labels)//2)
+    rows= 4 if len(labels) > 6 else 2
+    leg = ax.legend(**legend_pos, fancybox=True, shadow=True, ncol=2)
+    # ax.figure.subplots_adjust(hspace=0.5, wspace=0.5)
+    # ax.figure.set_constrained_layout_pads(hpad=5.)
+
+    # leg.set_in_layout(False)
     
     return ax.figure
 
@@ -390,7 +411,7 @@ def plot_eval(emb_cfg: dict, loss_cfg: dict, metric_cfg: dict = None, title="", 
         metric_cfg["ax"] = ax
         plot_curve(**metric_cfg)
 
-    fig.tight_layout()
+    # fig.tight_layout()
 
     return fig
 

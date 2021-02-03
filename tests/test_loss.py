@@ -8,7 +8,7 @@ import torch
 import numpy as np
 
 # pylint: disable=import-error
-from model import jensen_shannon_mi
+from model import jensen_shannon_mi, bce_loss
 from model.solver import evaluate
 
 class TestEvaluation(unittest.TestCase):
@@ -34,6 +34,43 @@ class TestEvaluation(unittest.TestCase):
 class TestLoss(unittest.TestCase):
     """ Test class for TIG loss function.
     """
+
+    def test_bce(self):
+        """
+        """
+        enc_global = torch.tensor([
+            [1, 1, 1],
+            [2, 2, 2]
+        ])
+
+        enc_local = torch.tensor([
+            [
+                [3, 3, 3],
+                [4, 4, 4],
+            ],
+            [
+                [5, 5, 5],
+                [6, 6, 6],
+            ]
+        ]).permute(0, 2, 1)
+
+        loss_fn = bce_loss
+
+        _ = bce_loss(enc_global, enc_local)
+
+        #### Check Discriminator Matrix ####
+        self.assertTrue(torch.all(torch.eq(loss_fn.mask, torch.tensor([
+                                                        [ 1., 1., 0., 0.],
+                                                        [ 0., 0., 1., 1.]]))))
+
+
+        yhat_norm = torch.sigmoid(loss_fn.discr_matr)
+        yhat_norm[yhat_norm > 0.5] = 1
+        yhat_norm[yhat_norm <= 0.5] = 0
+
+        loss_acc = (yhat_norm == loss_fn.mask).sum() / torch.numel(loss_fn.mask)
+
+        self.assertEqual(loss_acc, 0.5)
 
     def test_js_mi(self):
         """ Simple test for jensen-shannon MI loss.

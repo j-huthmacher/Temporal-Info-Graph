@@ -287,28 +287,29 @@ class Solver():
                                                                       disable=False, desc=f'Trai. Batch (Epoch: {self.epoch})')):
                 self.train_step(batch_x, self.batch_y, encoder)
 
-                yhat_norm = torch.sigmoid(self.loss_fn.discr_matr).detach().numpy()
-                yhat_norm[yhat_norm > 0.5] = 1
-                yhat_norm[yhat_norm <= 0.5] = 0
+                if isinstance(self.yhat, tuple):
+                    yhat_norm = torch.sigmoid(self.loss_fn.discr_matr).detach().numpy()
+                    yhat_norm[yhat_norm > 0.5] = 1
+                    yhat_norm[yhat_norm <= 0.5] = 0
 
-                evaluate(yhat_norm, self.loss_fn.mask.detach().numpy(), mode="accuracy")
+                    evaluate(yhat_norm, self.loss_fn.mask.detach().numpy(), mode="accuracy")
 
-                acc = evaluate(
-                    yhat_norm, self.loss_fn.mask.detach().numpy(), mode="accuracy")
-                prec = evaluate(
-                    yhat_norm, self.loss_fn.mask.detach().numpy(), mode="precision")
-                auc = evaluate(
-                    yhat_norm, self.loss_fn.mask.detach().numpy(), mode="auc")
+                    acc = evaluate(
+                        yhat_norm, self.loss_fn.mask.detach().numpy(), mode="accuracy")
+                    prec = evaluate(
+                        yhat_norm, self.loss_fn.mask.detach().numpy(), mode="precision")
+                    auc = evaluate(
+                        yhat_norm, self.loss_fn.mask.detach().numpy(), mode="auc")
 
-                train_batch_metric["accuracy"] = (train_batch_metric["accuracy"] + [acc]
-                                                if "accuracy" in train_batch_metric
-                                                else [acc])
-                train_batch_metric["precision"] = (train_batch_metric["precision"] + [prec]
-                                                 if "precision" in train_batch_metric
-                                                 else [prec])
-                train_batch_metric["auc"] = (train_batch_metric["auc"] + [auc]
-                                           if "auc" in train_batch_metric
-                                           else [auc])
+                    train_batch_metric["accuracy"] = (train_batch_metric["accuracy"] + [acc]
+                                                    if "accuracy" in train_batch_metric
+                                                    else [acc])
+                    train_batch_metric["precision"] = (train_batch_metric["precision"] + [prec]
+                                                    if "precision" in train_batch_metric
+                                                    else [prec])
+                    train_batch_metric["auc"] = (train_batch_metric["auc"] + [auc]
+                                            if "auc" in train_batch_metric
+                                            else [auc])
 
                 if encoder is None and callable(track):
                     track("train_step")
@@ -353,28 +354,29 @@ class Solver():
                                                                               desc=f'Vali. Batch (Epoch: {self.epoch})')):
                         self.val_step(batch_x, self.batch_y, encoder)
 
-                        yhat_norm = torch.sigmoid(self.loss_fn.discr_matr).detach().numpy()
-                        yhat_norm[yhat_norm > 0.5] = 1
-                        yhat_norm[yhat_norm <= 0.5] = 0
+                        if isinstance(self.yhat, tuple):
+                            yhat_norm = torch.sigmoid(self.loss_fn.discr_matr).detach().numpy()
+                            yhat_norm[yhat_norm > 0.5] = 1
+                            yhat_norm[yhat_norm <= 0.5] = 0
 
-                        evaluate(yhat_norm, self.loss_fn.mask.detach().numpy(), mode="accuracy")
+                            evaluate(yhat_norm, self.loss_fn.mask.detach().numpy(), mode="accuracy")
 
-                        acc = evaluate(
-                            yhat_norm, self.loss_fn.mask.detach().numpy(), mode="accuracy")
-                        prec = evaluate(
-                            yhat_norm, self.loss_fn.mask.detach().numpy(), mode="precision")
-                        auc = evaluate(
-                            yhat_norm, self.loss_fn.mask.detach().numpy(), mode="auc")
+                            acc = evaluate(
+                                yhat_norm, self.loss_fn.mask.detach().numpy(), mode="accuracy")
+                            prec = evaluate(
+                                yhat_norm, self.loss_fn.mask.detach().numpy(), mode="precision")
+                            auc = evaluate(
+                                yhat_norm, self.loss_fn.mask.detach().numpy(), mode="auc")
 
-                        val_batch_metric["accuracy"] = (val_batch_metric["accuracy"] + [acc]
-                                                        if "accuracy" in val_batch_metric
-                                                        else [acc])
-                        val_batch_metric["precision"] = (val_batch_metric["precision"] + [prec]
-                                                        if "precision" in val_batch_metric
-                                                        else [prec])
-                        val_batch_metric["auc"] = (val_batch_metric["auc"] + [auc]
-                                                if "auc" in val_batch_metric
-                                                else [auc])
+                            val_batch_metric["accuracy"] = (val_batch_metric["accuracy"] + [acc]
+                                                            if "accuracy" in val_batch_metric
+                                                            else [acc])
+                            val_batch_metric["precision"] = (val_batch_metric["precision"] + [prec]
+                                                            if "precision" in val_batch_metric
+                                                            else [prec])
+                            val_batch_metric["auc"] = (val_batch_metric["auc"] + [auc]
+                                                    if "auc" in val_batch_metric
+                                                    else [auc])
 
 
                     if not isinstance(self.yhat, tuple) and len(self.val_loader) > 0:

@@ -735,6 +735,8 @@ class Tracker(object):
             except Exception as e:
                 print(e)
                 pass
+            
+            cfg["loss_fn"] = str(self.solver.loss_fn.__class__.__name__)
 
             log.info(f"Experiment path: {self.local_path}")
 

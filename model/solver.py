@@ -112,7 +112,7 @@ class Solver():
         self.test_losses = []  # TODO: Useless?
 
         self.val_metrics = {}  # np.array([])
-        self.train_metrics = {} # np.array([])
+        self.train_metrics = {}  # np.array([])
         self.predictions = np.array([])
         self.labels = np.array([])
 
@@ -287,12 +287,15 @@ class Solver():
                                                                       disable=False, desc=f'Trai. Batch (Epoch: {self.epoch})')):
                 self.train_step(batch_x, self.batch_y, encoder)
 
+                #### Track Evaluation ####
                 if isinstance(self.yhat, tuple):
-                    yhat_norm = torch.sigmoid(self.loss_fn.discr_matr).detach().numpy()
+                    yhat_norm = torch.sigmoid(
+                        self.loss_fn.discr_matr).detach().numpy()
                     yhat_norm[yhat_norm > 0.5] = 1
                     yhat_norm[yhat_norm <= 0.5] = 0
 
-                    evaluate(yhat_norm, self.loss_fn.mask.detach().numpy(), mode="accuracy")
+                    evaluate(
+                        yhat_norm, self.loss_fn.mask.detach().numpy(), mode="accuracy")
 
                     acc = evaluate(
                         yhat_norm, self.loss_fn.mask.detach().numpy(), mode="accuracy")
@@ -302,44 +305,37 @@ class Solver():
                         yhat_norm, self.loss_fn.mask.detach().numpy(), mode="auc")
 
                     train_batch_metric["accuracy"] = (train_batch_metric["accuracy"] + [acc]
-                                                    if "accuracy" in train_batch_metric
-                                                    else [acc])
+                                                      if "accuracy" in train_batch_metric
+                                                      else [acc])
                     train_batch_metric["precision"] = (train_batch_metric["precision"] + [prec]
-                                                    if "precision" in train_batch_metric
-                                                    else [prec])
+                                                       if "precision" in train_batch_metric
+                                                       else [prec])
                     train_batch_metric["auc"] = (train_batch_metric["auc"] + [auc]
-                                            if "auc" in train_batch_metric
-                                            else [auc])
+                                                 if "auc" in train_batch_metric
+                                                 else [auc])
+                else:
+                    top_k = evaluate(self.train_pred, self.train_label)
+                    train_batch_metric["top-1"] = (train_batch_metric["top-1"] + [top_k[0]]
+                                                   if "top-1" in train_batch_metric
+                                                   else [top_k[0]])
+                    train_batch_metric["top-5"] = (train_batch_metric["top-5"] + [top_k[1]]
+                                                   if "top-5" in train_batch_metric
+                                                   else [top_k[1]])
+                    self.train_pred = np.array([])
+                    self.train_label = np.array([])
 
                 if encoder is None and callable(track):
                     track("train_step")
 
                 # if callable(track):
                 #     track("training")
-            
 
-            if not isinstance(self.yhat, tuple):
-                self.train_metric = evaluate(self.train_pred, self.train_label)
-                # self.train_metrics.append(self.train_metric)
-                self.train_metrics["top-k"] = (self.train_metric["top-k"] + [self.train_metric]
-                                               if "top-k" in self.train_metric
-                                               else [self.train_metric])
-                self.train_pred = np.array([])
-                self.train_label = np.array([])
-            else:
-                acc = np.mean(train_batch_metric["accuracy"])
-                prec = np.mean(train_batch_metric["precision"])
-                auc =  np.mean(train_batch_metric["auc"])
-                self.train_metrics["accuracy"] = (self.train_metrics["accuracy"] + [acc]
-                                                if "accuracy" in self.train_metrics
-                                                else [acc])
-                self.train_metrics["precision"] = (self.train_metrics["precision"] + [prec]
-                                                 if "precision" in self.train_metrics
-                                                 else [prec])
-                self.train_metrics["auc"] = (self.train_metrics["auc"] + [auc]
-                                           if "auc" in self.train_metrics
-                                           else [auc])
-                train_batch_metric = {}
+            for key in train_batch_metric:
+                metric = np.mean(train_batch_metric[key])
+                self.train_metrics[key] = (self.train_metrics[key] + [metric]
+                                           if key in self.train_metrics
+                                           else [metric])
+            train_batch_metric = {}
 
             self.phase = "validation"
             if self.val_loader is not None:
@@ -355,11 +351,13 @@ class Solver():
                         self.val_step(batch_x, self.batch_y, encoder)
 
                         if isinstance(self.yhat, tuple):
-                            yhat_norm = torch.sigmoid(self.loss_fn.discr_matr).detach().numpy()
+                            yhat_norm = torch.sigmoid(
+                                self.loss_fn.discr_matr).detach().numpy()
                             yhat_norm[yhat_norm > 0.5] = 1
                             yhat_norm[yhat_norm <= 0.5] = 0
 
-                            evaluate(yhat_norm, self.loss_fn.mask.detach().numpy(), mode="accuracy")
+                            evaluate(
+                                yhat_norm, self.loss_fn.mask.detach().numpy(), mode="accuracy")
 
                             acc = evaluate(
                                 yhat_norm, self.loss_fn.mask.detach().numpy(), mode="accuracy")
@@ -372,36 +370,29 @@ class Solver():
                                                             if "accuracy" in val_batch_metric
                                                             else [acc])
                             val_batch_metric["precision"] = (val_batch_metric["precision"] + [prec]
-                                                            if "precision" in val_batch_metric
-                                                            else [prec])
+                                                             if "precision" in val_batch_metric
+                                                             else [prec])
                             val_batch_metric["auc"] = (val_batch_metric["auc"] + [auc]
-                                                    if "auc" in val_batch_metric
-                                                    else [auc])
+                                                       if "auc" in val_batch_metric
+                                                       else [auc])
+                        else:
+                            top_k = evaluate(self.val_pred, self.val_label)
+                            val_batch_metric["top-1"] = (val_batch_metric["top-1"] + [top_k[0]]
+                                                           if "top-1" in val_batch_metric
+                                                           else [top_k[0]])
+                            val_batch_metric["top-5"] = (val_batch_metric["top-5"] + [top_k[1]]
+                                                           if "top-5" in val_batch_metric
+                                                           else [top_k[1]])
+                            self.val_pred = np.array([])
+                            self.val_label = np.array([])
 
-
-                    if not isinstance(self.yhat, tuple) and len(self.val_loader) > 0:
-                        self.val_metric = evaluate(
-                            self.val_pred, self.val_label)
-                        # self.val_metrics.append(self.val_metric)
-                        self.val_metrics["top-k"] = (self.val_metrics["top-k"] + [self.val_metric]
-                                                     if "top-k" in self.val_metrics
-                                                     else [self.val_metric])
-                        self.val_pred = np.array([])
-                        self.val_label = np.array([])
-                    else:
-                        acc = np.mean(val_batch_metric["accuracy"])
-                        prec = np.mean(val_batch_metric["precision"])
-                        auc =  np.mean(val_batch_metric["auc"])                     
-                        self.val_metrics["val. accuracy"] = (self.val_metrics["val. accuracy"] + [acc]
-                                                        if "val. accuracy" in self.val_metrics
-                                                        else [acc])
-                        self.val_metrics["val. precision"] = (self.val_metrics["val. precision"] + [prec]
-                                                         if "val. precision" in self.val_metrics
-                                                         else [prec])
-                        self.val_metrics["val. auc"] = (self.val_metrics["val. auc"] + [auc]
-                                                   if "val. auc" in self.val_metrics
-                                                   else [auc])
-                        val_batch_metric = {}
+                    for key in val_batch_metric:                        
+                        metric = np.mean(val_batch_metric[key])
+                        key = f"val. {key}"
+                        self.val_metrics[key] = (self.val_metrics[key] + [metric]
+                                                   if key in self.val_metrics
+                                                   else [metric])
+                    val_batch_metric = {}
 
                     # TODO: CHeck this
                     self.val_losses.append(np.mean(self.val_batch_losses) if len(
@@ -414,7 +405,7 @@ class Solver():
             # self.train_batch_losses = []
             if ("val. accuracy" in self.val_metrics and
                 "val. precision" in self.val_metrics and
-                "val. auc" in self.val_metrics):
+                    "val. auc" in self.val_metrics):
                 pbar.set_description(f'Epochs ({self.model.__class__.__name__})' +
                                      f'(Val (max) - acc: {"%.2f"%np.max(self.val_metrics["val. accuracy"])},' +
                                      f'prec: {"%.2f"%np.max(self.val_metrics["val. precision"])},' +

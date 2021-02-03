@@ -33,7 +33,7 @@ def bce_loss(enc_global: torch.Tensor, enc_local: torch.Tensor):
     """
     self = bce_loss
 
-    self.b_xent = nn.BCEWithLogitsLoss()
+    
 
     self.num_graphs = enc_global.shape[0]
     self.num_nodes = enc_local.shape[-1]
@@ -48,6 +48,10 @@ def bce_loss(enc_global: torch.Tensor, enc_local: torch.Tensor):
     # Diagonal with blocks 'num_nodes' ones on the diagonal. Labels the date
     # with 1 for positive sample and 0 for negative sample.
     self.mask = torch.block_diag(*[torch.ones(self.num_nodes) for _ in range(self.num_graphs)]).to("cpu")
+    num_neg_samples = self.num_graphs * self.num_nodes  * (self.num_graphs - 1)
+    num_pos_samples = self.num_graphs * self.num_nodes
+
+    self.b_xent = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([num_neg_samples/num_pos_samples]))
 
     return self.b_xent(self.discr_matr, self.mask)
 

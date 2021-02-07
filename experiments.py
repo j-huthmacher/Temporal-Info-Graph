@@ -116,10 +116,12 @@ def experiment(tracker: Tracker, config: dict):
             loader = [train_loader, val_loader]
 
         #### TIG Set Up ####
-        tig = TemporalInfoGraph(**config["encoder"], A=KINECT_ADJACENCY).cuda()
+        tig = TemporalInfoGraph(**config["encoder"], A=KINECT_ADJACENCY)#.cuda()
 
         if "print_summary" in config and config["print_summary"]:
-            summary(tig, input_size=(2, 36, 300), batch_size=config["loader"]["batch_size"])
+            summary(tig.to("cpu"), input_size=(2, 36, 300), batch_size=config["loader"]["batch_size"])
+        
+        tig = tig.to("cuda")
 
         loss_fn = jensen_shannon_mi
         if "loss" in config and config["loss"] == "bce":
@@ -388,14 +390,14 @@ class Experiment():
             except:  #pylint: disable=bare-except
                 self.tig_train_metrics = {}
                 self.tig_val_metrics = {}
-                f = sftp.open(f"{path}TIG_train.metrics.npy")
-                f.prefetch()
-                f = f.read()
-                self.tig_train_metrics["top-k"] = np.load(io.BytesIO(f))
-                f = sftp.open(f"{path}TIG_train.metrics.npy")
-                f.prefetch()
-                f = f.read()
-                self.tig_val_metrics["val. top-k"] = np.load(io.BytesIO(f))
+                # f = sftp.open(f"{path}TIG_train.metrics.npy")
+                # f.prefetch()
+                # f = f.read()
+                # self.tig_train_metrics["top-k"] = np.load(io.BytesIO(f))
+                # f = sftp.open(f"{path}TIG_train.metrics.npy")
+                # f.prefetch()
+                # f = f.read()
+                # self.tig_val_metrics["val. top-k"] = np.load(io.BytesIO(f))
                 pass
                 
             #### TIG Train Metric ####
@@ -425,7 +427,7 @@ class Experiment():
 
             slurm.close()
             jhost.close()
-            
+
     def show_img(self, name):
         """
         """
@@ -599,10 +601,10 @@ class Experiment():
         if args is not None:
             return plot_curve(**args, title=title, model_name=model_name, ax=ax)
 
-    def plot_emb(self, mode="PCA", label=None):
+    def plot_emb(self, **kwargs):
         """
         """
-        return plot_emb(self.emb_x, self.emb_y, mode=mode, label = label)
+        return plot_emb(self.emb_x, self.emb_y, **kwargs)
 
     def plot_class_distr(self):
         fig, ax = plt.subplots(figsize=(7,5))

@@ -20,7 +20,7 @@ plt.style.use('seaborn')
 
 #### Single Plots ####
 def plot_emb(x: np.array, y: np.array, title: str = "", ax: matplotlib.axes.Axes = None,
-             count: bool = False, mode: str = "PCA", label=None):
+             count: bool = False, mode: str = "PCA", label=None, figsize=(7,7)):
     """ Plot embeddings.
 
         Paramters:
@@ -45,6 +45,19 @@ def plot_emb(x: np.array, y: np.array, title: str = "", ax: matplotlib.axes.Axes
     
     mode_str = ""
 
+    if mode == "Plain":
+        x = x[:x.shape[1]]
+        x_args = {
+            "xticks": [],
+            "yticks": [],
+            "xlabel": "Emb. Features",
+            "ylabel": "Samples",
+            "title": f"Embeding Values (first {x.shape[1]} samples)"
+            }
+
+        _ = plot_heatmap(x, im_args=x_args,figsize=figsize)
+        return
+
     if label is not None:
         x = x[np.isin(y, label)]
         y = y[np.isin(y, label)]
@@ -63,7 +76,7 @@ def plot_emb(x: np.array, y: np.array, title: str = "", ax: matplotlib.axes.Axes
         subplot_args = {
             "nrows": 1,
             "ncols": 2 if count else 1,
-            "figsize": (12, 6) if count else (6, 6)
+            "figsize": (12, 6) if count else figsize
         } 
         fig, ax = plt.subplots(**subplot_args)
     ax = np.squeeze([ax]) if np.squeeze([ax]).shape else [ax]
@@ -226,7 +239,7 @@ def plot_curve(data: dict, ax: matplotlib.axes.Axes = None, n_epochs: int = None
 
 
 def plot_heatmap(matrix: np.ndarray, xlabel: str = "", ylabel: str = "", ticks: tuple = None,
-                 cbar_title: str = "", im_args: dict = {}, ax = None):
+                 cbar_title: str = "", im_args: dict = {}, ax = None, figsize=(5,5)):
     """ Creates a single heatmap.
 
         Paramter:
@@ -250,11 +263,12 @@ def plot_heatmap(matrix: np.ndarray, xlabel: str = "", ylabel: str = "", ticks: 
     """
 
     if ax is None:
-        fig, ax = plt.subplots(figsize = (7,7))
+        fig, ax = plt.subplots(figsize = figsize)
+        fig.tight_layout()
 
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
-    
+
     hm = ax.imshow(matrix, cmap="YlGn")
 
     cbar = ax.figure.colorbar(hm, ax=ax, orientation = "horizontal")

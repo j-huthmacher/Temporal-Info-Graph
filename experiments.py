@@ -1,6 +1,7 @@
 """
     @author: jhuthmacher
 """
+#pylint: disable=bare-except
 import io
 import json
 import os
@@ -23,7 +24,6 @@ from torchsummary import summary
 
 from PIL import Image
 import io
-
 
 from paramiko import SSHClient, SSHConfig, AutoAddPolicy, SFTPClient
 
@@ -188,9 +188,10 @@ def experiment(tracker: Tracker, config: dict):
 ##########################################################
 class Experiment():
     """ Experiment class to easy access output files from an experiment run in an
-        object oriented matter.
+        object oriented matter.    
     """
-    def __init__(self, path: str, ssh: str = None):
+    
+    def __init__(self, path: str, con="local"):
         """ Initilization.
 
             Parameters:
@@ -201,235 +202,139 @@ class Experiment():
         self.path = path
         self.folder =  os.path.normpath(self.path).split(os.sep)[0]
         self.name = os.path.normpath(self.path).split(os.sep)[-1]
-        self.ssh = ssh
-        if ssh is None:
+        self.load = {
+            "local": self.local_load,
+            "ssh": self.ssh_load
+        }
+        
+        #### Load Attributes ####
+        #### Load Embeddings
+        try:
+            data = self.load[con]("embeddings", "embeddings.npz")
+            self.emb_loader = DataLoader(list(zip(data["x"], data["y"])))
+        except:
             try:
-                data = np.load(f"{path}embeddings.npz", allow_pickle=True)
-                emb_x = data["x"]
-                emb_y = data["y"]
+                data = self.load[con]("embeddings", "embeddings_train.npz")
+                self.emb_loader = DataLoader(list(zip(data["x"], data["y"])))
+            except:
+                pass    
+        
+        try:
+            data = self.load[con]("embeddings", "embeddings_best.npz")
+            self.emb_loader_best = DataLoader(list(zip(data["x"], data["y"])))
+        except:
+            pass
 
-                self.emb_loader = DataLoader(list(zip(emb_x, emb_y)))
-
-                #### Clean Storage ####
-                del data
-                del emb_x
-                del emb_y
-            except Exception as e:  #pylint: disable=bare-except
-                # Not each experiement has embeddings saved
-                try:
-                    data = np.load(f"{path}embeddings_train.npz", allow_pickle=True)
-                    emb_x = data["x"]
-                    emb_y = data["y"]
-
-                    self.emb_loader = DataLoader(list(zip(emb_x, emb_y)))
-
-                    #### Clean Storage ####
-                    del data
-                    del emb_x
-                    del emb_y
-                except:
-                    pass
-                pass
+        #### TIG Artifacts ####
+        try:
+            self.tig_train_loss = self.load[con]("loss", "TIG_train_losses.npy")
+            self.tig_val_loss = self.load[con]("loss", "TIG_val_losses.npy")
             
-            #### TIG Model/Losses/Metric ####
+            self.tig_train_metrics = self.load[con]("metric", "TIG_train.metrics.npz")
+            self.tig_val_metrics = self.load[con]("metric", "TIG_val.metrics.npz")
+
+            self.tig_best = self.load[con]("conl", "TIG__best.pt")
+            self.tig = self.load[con]("conl", "TIG_.pt")
+        except:
+            pass
+
+        #### TIG Discriminator Scores ####
+        try:
+            self.tig_discriminator = self.load[con]("discriminator", "discriminator.npy")
+        except:
+            pass
+        
+        #### MLP Artifacts #####
+        try:
+            #### MLP Loss ####
+            self.clf_train_loss = self.load[con]("loss", "TIG_MLP.train_losses.npy")
+            self.clf_val_loss = self.load[con]("loss", "TIG_MLP.val_losses.npy")
+
+            #### MLP Metrics ####
             try:
-                self.classifier = torch.load(f"{path}TIG_MLP.pt")#.cuda()
-                self.clf_train_loss = np.load(f"{path}TIG_MLP.train_losses.npy")
-                self.clf_val_loss = np.load(f"{path}TIG_MLP.val_losses.npy")
-                try:
-                    self.clf_train_metrics = np.load(f"{path}TIG_MLP.train.metrics.npz")
-                    self.clf_val_metrics = np.load(f"{path}TIG_MLP.val.metrics.npz")
-                    if "top-k" in self.clf_val_metrics:
-                        self.clf_val_metrics = {}
-                        self.clf_val_metrics["val. top-1"] = np.load(f"{path}TIG_MLP.val.metrics.npz")["top-k"][:, 0]
-                        self.clf_val_metrics["val. top-5"] = np.load(f"{path}TIG_MLP.val.metrics.npz")["top-k"][:, 1]
-                        self.clf_train_metrics = {}
-                        self.clf_train_metrics["top-1"] = np.load(f"{path}TIG_MLP.train.metrics.npz")["top-k"][:, 0]
-                        self.clf_train_metrics["top-5"] = np.load(f"{path}TIG_MLP.train.metrics.npz")["top-k"][:, 1]
-                except:
-                    # Legacy support
-                    self.clf_train_metrics = {}
+                self.clf_train_metrics = self.load[con]("metric", "TIG_MLP.train.metrics.npz")
+                self.clf_val_metrics = self.load[con]("metric", "TIG_MLP.val.metrics.npz")
+                if "top-k" in self.clf_val_metrics:
                     self.clf_val_metrics = {}
-                    self.clf_train_metrics["top-1"] = np.load(f"{path}TIG_MLP.train.metrics.npy")[:, 0]
-                    self.clf_val_metrics["val. top-1"]  = np.load(f"{path}TIG_MLP.val.metrics.npy")[:, 0]
-                    self.clf_train_metrics["top-5"] = np.load(f"{path}TIG_MLP.train.metrics.npy")[:, 1]
-                    self.clf_val_metrics["val. top-5"]  = np.load(f"{path}TIG_MLP.val.metrics.npy")[:, 1]
-            except:  #pylint: disable=bare-except
-                # Not each experiement has  a classifier
-                pass
-            
-            #### TIG Model/Losses ####
-            try:
-                self.tig_train_loss = np.load(f"{path}TIG_train_losses.npy")
-                self.tig_val_loss = np.load(f"{path}TIG_val_losses.npy")
-                self.tig = torch.load(f"{path}TIG_.pt")#.cuda()
-            except:  #pylint: disable=bare-except
-                pass
-            
+                    self.clf_val_metrics["val. top-1"] = self.load[con]("metric", "TIG_MLP.train.metrics.npz")["top-k"][:, 0]
+                    self.clf_val_metrics["val. top-5"] = self.load[con]("metric", "TIG_MLP.val.metrics.npz")["top-k"][:, 1]
+            except:
+                # Legacy support
+                self.clf_train_metrics = {}
+                self.clf_val_metrics = {}
+                self.clf_train_metrics["top-1"] = self.load[con]("metric", "TIG_MLP.train.metrics.npy")[:, 0]
+                self.clf_train_metrics["top-5"] = self.load[con]("metric", "TIG_MLP.train.metrics.npy")[:, 1]
+                self.clf_val_metrics["val. top-1"]  = self.load[con]("metric", "TIG_MLP.val.metrics.npy")[:, 0]
+                self.clf_val_metrics["val. top-5"]  = self.load[con]("metric", "TIG_MLP.val.metrics.npy")[:, 1]
+    
+            #### MLP conl ####
+            self.classifier = self.load[con]("conl", "TIG_MLP.pt")
+        except:
+            pass
+        
+        self.config = self.load[con]("config", None)
 
-            #### TIG Train Metric ####
-            try:
-                self.tig_train_metrics = np.load(f"{path}TIG_train.metrics.npz")
-                self.tig_val_metrics = np.load(f"{path}TIG_val.metrics.npz")
-            except:  #pylint: disable=bare-except
-                self.tig_train_metrics = {}
-                self.tig_val_metrics = {}
-                # self.tig_train_metrics["top-k"] = np.load(f"{path}TIG_train.metrics.npy")
-                # self.tig_val_metrics["val. top-k"]  = np.load(f"{path}TIG_val.metrics.npy")
-                pass
-
-            with open(f"{path}config.json") as file:
-                self.config = json.load(file)
-                self.config["exp_path"] = self.path
-            
+        if con == "local":
             #### Set Up Logging ####
-            self.log = create_logger(fpath = self.config["exp_path"], name="EXP Logger", suffix="EXP_")
+            self.log = create_logger(fpath = self.config["exp_path"],
+                                     name="EXP Logger", suffix="EXP_")
 
-        else:
-            slurm, jhost = connect_to_slurm()
-            sftp = SFTPClient.from_transport(slurm.get_transport())
+    def ssh_load(self, name, file_name):
+        """ Load artifacts through SSH with SFTP.
+        """
+        slurm, jhost = connect_to_slurm()
+        sftp = SFTPClient.from_transport(slurm.get_transport())
 
-            try:
-                f = sftp.open(f"{path}embeddings.npz")
-                f.prefetch()
-                f = f.read()
-                data = np.load(io.BytesIO(f))
-                emb_x = data["x"]
-                emb_y = data["y"]
-
-                self.emb_loader = DataLoader(list(zip(emb_x, emb_y)))
-
-                #### Clean Storage ####
-                del data
-                del emb_x
-                del emb_y
-            except:  #pylint: disable=bare-except
-                # Not each experiement has embeddings saved
-                try:
-                    f = sftp.open(f"{path}embeddings_train.npz")
-                    f.prefetch()
-                    f = f.read()
-                    data = np.load(io.BytesIO(f))
-                    emb_x = data["x"]
-                    emb_y = data["y"]
-
-                    self.emb_loader = DataLoader(list(zip(emb_x, emb_y)))
-
-                    #### Clean Storage ####
-                    del data
-                    del emb_x
-                    del emb_y
-                except:
-                    pass
-                pass
-
-            #### TIG Model/Losses/Metric ####
-            try:                
-                f = sftp.open(f"{path}TIG_MLP.train_losses.npy")
-                f.prefetch()
-                f = f.read()
-                self.clf_train_loss = np.load(io.BytesIO(f))
-                f = sftp.open(f"{path}TIG_MLP.val_losses.npy")
-                f.prefetch()
-                f = f.read()
-                self.clf_val_loss = np.load(io.BytesIO(f))
-                try:
-                    f = sftp.open(f"{path}TIG_MLP.train.metrics.npz")
-                    f.prefetch()
-                    f = f.read()
-                    self.clf_train_metrics = np.load(io.BytesIO(f))
-                    f = sftp.open(f"{path}TIG_MLP.val.metrics.npz")
-                    f.prefetch()
-                    f = f.read()
-                except:
-                    self.clf_train_metrics = {}
-                    self.clf_val_metrics = {}
-                    f = sftp.open(f"{path}TIG_MLP.train.metrics.npy")
-                    f.prefetch()
-                    f = f.read()
-                    self.clf_train_metrics["top-1"] = np.load(io.BytesIO(f))[:,0]
-                    self.clf_train_metrics["top-5"] = np.load(io.BytesIO(f))[:,1]
-                    f = sftp.open(f"{path}TIG_MLP.val.metrics.npy")
-                    f.prefetch()
-                    f = f.read()
-                    self.clf_val_metrics["val. top-1"] = np.load(io.BytesIO(f))[:,0]
-                    self.clf_val_metrics["val. top-5"] = np.load(io.BytesIO(f))[:,1]
-                f = sftp.open(f"{path}TIG_MLP.pt")
-                f.prefetch()
-                f = f.read()
-                self.classifier = torch.load(io.BytesIO(f))#.cuda()
-            except:  #pylint: disable=bare-except
-                # Not each experiement has  a classifier                
-                pass
-            
-            #### TIG Model/Losses ####
-            try:                
-                f = sftp.open(f"{path}TIG_train_losses.npy")
-                f.prefetch()    
-                f = f.read()
-                self.tig_train_loss = np.load(io.BytesIO(f))
-                f = sftp.open(f"{path}TIG_val_losses.npy")
-                f.prefetch()
-                f = f.read()
-                self.tig_val_loss = np.load(io.BytesIO(f))
-                f = sftp.open(f"{path}TIG_.pt")
-                f.prefetch()
-                f = f.read()
-                self.tig = torch.load(io.BytesIO(f))#.cuda()
-            except Exception as e:  #pylint: disable=bare-except
-                print("Exception (TIG)", e)
-                pass
-                
-            #### TIG Train Metric ####
-            try:
-                f = sftp.open(f"{path}TIG_train.metrics.npz")
-                f.prefetch()
-                f = f.read()
-                self.tig_train_metrics = np.load(io.BytesIO(f))
-                f = sftp.open(f"{path}TIG_train.metrics.npz")
-                f.prefetch()
-                f = f.read()
-                self.tig_val_metrics = np.load(io.BytesIO(f))
-            except:  #pylint: disable=bare-except
-                self.tig_train_metrics = {}
-                self.tig_val_metrics = {}
-                # f = sftp.open(f"{path}TIG_train.metrics.npy")
-                # f.prefetch()
-                # f = f.read()
-                # self.tig_train_metrics["top-k"] = np.load(io.BytesIO(f))
-                # f = sftp.open(f"{path}TIG_train.metrics.npy")
-                # f.prefetch()
-                # f = f.read()
-                # self.tig_val_metrics["val. top-k"] = np.load(io.BytesIO(f))
-                pass
-                
-            #### TIG Train Metric ####
-            try:
-                f = sftp.open(f"{path}TIG.loss.final.png")
-                f.prefetch()
-                f = f.read()
-                self.img["TIG.loss.final.png"] =f
-
-                f = sftp.open(f"{path}MLP.loss.metric.final.png")
-                f.prefetch()
-                f = f.read()
-                self.img["MLP.loss.metric.final.png"] = f
-
-                f = sftp.open(f"{path}MLP.loss.final.png")
-                f.prefetch()
-                f = f.read()
-                self.img["MLP.loss.final.png"] = f
-            except:  #pylint: disable=bare-except
-                pass
-            
-            f = sftp.open(f"{path}config.json")
+        if name == "embeddings":
+            f = sftp.open(self.path + file_name)
             f.prefetch()
             f = f.read()
-            self.config = json.load(io.BytesIO(f))
-            self.config["exp_path"] = self.path
+            return np.load(io.BytesIO(f))
+        elif name == "loss":
+            f = sftp.open(self.path + file_name)
+            f.prefetch()
+            f = f.read()
+            return np.load(io.BytesIO(f))
+        elif name == "metric":
+            f = sftp.open(self.path + file_name)
+            f.prefetch()
+            f = f.read()
+            return np.load(io.BytesIO(f))
+        elif name == "config":
+            f = sftp.open(f"{self.path}config.json")
+            f.prefetch()
+            f = f.read()
+            config = json.load(io.BytesIO(f))
+            config["exp_path"] = self.path
+            return config
+        elif name == "discriminator":
+            f = sftp.open(f"{self.path}config.json")
+            f.prefetch()
+            f = f.read()
+            return np.load(io.BytesIO(f))
 
-            slurm.close()
-            jhost.close()
+        
+        slurm.close()
+        jhost.close()
+
+    def local_load(self, name, file_name):
+        """ Load data from local storage
+        """
+        if name == "embeddings":
+            return np.load(self.path + file_name, allow_pickle=True)
+        elif name == "model":
+            return torch.load(self.path + file_name)
+        elif name == "loss":
+            return np.load(self.path + file_name)
+        elif name == "metric":
+            return np.load(self.path + file_name)
+        elif name == "config":
+            with open(f"{self.path}config.json") as file:
+                config = json.load(file)
+                config["exp_path"] = self.path
+            return config
+        elif name == "discriminator":
+            return np.load(self.path + file_name)
 
     def show_img(self, name):
         """
@@ -452,6 +357,15 @@ class Experiment():
             return self.emb_loader.dataset
         except:  #pylint: disable=bare-except
             return None
+        
+    @property
+    def emb_best(self):
+        """ Embeddings from the encoder (complete data set).
+        """
+        try:
+            return self.emb_loader_best.dataset
+        except:  #pylint: disable=bare-except
+            return None
 
     @property
     def emb_x(self):
@@ -464,6 +378,18 @@ class Experiment():
         """ Labels of the emebddings.
         """
         return np.array(list(np.array(self.emb)[:, 1])) if self.emb is not None else None
+
+    @property
+    def emb_x_best(self):
+        """ Features of the emebddings.
+        """
+        return np.array(list(np.array(self.emb_best)[:, 0])) if self.emb_best is not None else None
+
+    @property
+    def emb_y_best(self):
+        """ Labels of the emebddings.
+        """
+        return np.array(list(np.array(self.emb_best)[:, 1])) if self.emb_best is not None else None
 
     def __repr__(self):
         """
@@ -478,7 +404,8 @@ class Experiment():
         representation = f"Experiment ({os.path.normpath(self.path).split(os.sep)[-1]})\n"
         representation += f"--- Epoch: {self.tig_train_loss.shape[0] if hasattr(self, 'tig_train_loss') else 'Loss not available.'}\n"
         representation += f"--- Duration: {self.config['duration'] if 'duration' in self.config else 'Not Finished'}\n"
-        representation += f"--- Runtime: {runtime}\n"
+        if not 'duration' in self.config:
+            representation += f"--- Runtime: {runtime}\n"
         representation += f"--- Batchsize: {self.config['loader']['batch_size'] if 'loader' in self.config else 'Config Incomplete'}\n"
         representation += f"--- Learning Rate: {self.config['encoder_training']['optimizer']['lr'] if 'encoder_training' in self.config else 'Config Incomplete'}\n"
         representation += f"--- Training set: {self.config['train_length'] if 'train_length' in self.config else 'Config Incomplete'}\n"
@@ -584,16 +511,18 @@ class Experiment():
                         "Val Loss": self.clf_val_loss
                         }
                     }
-            elif name == "MLP.metric" and hasattr(self, "clf_val_metrics") and hasattr(self, "clf_train_metrics"):
+            elif name == "MLP.metric" and  hasattr(self, "clf_train_metrics"):
                 model_name = "MLP: "
                 title = "Accuracy (Top-1, Top-5)"
 
                 args = {
-                    "data": self.clf_train_metrics,
+                    "data": {**self.clf_train_metrics},
                     "line_mode": np.mean
                     }
                 if hasattr(self, "clf_val_metrics"):
                     args["data"] = {**self.clf_train_metrics, **self.clf_val_metrics}
+            else:
+                print("name not known")
 
 
         except Exception as e:
@@ -603,6 +532,11 @@ class Experiment():
             return None
         if args is not None:
             return plot_curve(**args, title=title, model_name=model_name, ax=ax)
+
+    def plot_emb_best(self, **kwargs):
+        """
+        """
+        return plot_emb(self.emb_x_best, self.emb_y_best, **kwargs)
 
     def plot_emb(self, **kwargs):
         """
@@ -763,6 +697,11 @@ class Experiment():
                 plt.close()
             else:
                 break
+
+
+####################
+# Helper Functions #
+####################
 
 def connect_to_slurm():
 

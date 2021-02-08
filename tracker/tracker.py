@@ -656,16 +656,16 @@ class Tracker(object):
                 name = "TIG.loss"
                 self.save_plot(fig, path, name)
 
+            #### Store Best Model ####
+            if self.best_loss is None:
+                self.save_embeddings(tag="_best")
+                self.save_model(tag="_best")
+            elif self.solver.val_losses[-1] < self.best_loss:
+                self.save_embeddings(tag="_best")
+                self.save_model(tag="_best")
+
         #### Store Intermediate Values ####
         self.save_loss_metric()
-
-        #### Store Best Model ####
-        if self.best_loss is None:
-            self.save_embeddings(tag="_best")
-            self.save_model(tag="_best")
-        elif self.solver.val_losses[-1] < self.best_loss:
-            self.save_embeddings(tag="_best")
-            self.save_model(tag="_best")
 
         #### Track Intermediate Embeddings ####
         if ("emb_tracking" in self.cfg and type(self.cfg["emb_tracking"]) == int and

@@ -33,14 +33,14 @@ def bce_loss(enc_global: torch.Tensor, enc_local: torch.Tensor):
     """
     self = bce_loss
 
-    
-
     self.num_graphs = enc_global.shape[0]
     self.num_nodes = enc_local.shape[-1]
 
     #### Discriminator ####
     # Row wise matrix product! Final dimension: (num_graphs, num_graphs * num_nodes)
-    self.discr_matr = torch.bmm(enc_global.repeat(self.num_graphs, 1, 1), enc_local)
+    temp = enc_global.repeat(self.num_graphs, 1, 1)
+    # temp = torch.repeat_interleave(enc_global[:, None, :], self.num_graphs, 1)
+    self.discr_matr = torch.bmm(temp, enc_local)  # (num_graphs, num_graphs, num_nodes)
     self.discr_matr = self.discr_matr.type("torch.FloatTensor").permute(1,0,2)
     self.discr_matr = self.discr_matr.reshape(self.num_graphs, (self.num_graphs)*self.num_nodes)
 
@@ -53,7 +53,10 @@ def bce_loss(enc_global: torch.Tensor, enc_local: torch.Tensor):
 
     self.b_xent = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([num_neg_samples/num_pos_samples]))
 
-    return self.b_xent(self.discr_matr, self.mask)
+    flat_disc = self.discr_matr.flatten()
+    flat_mask = self.mask.flatten()
+
+    return self.b_xent(flat_disc, flat_mask)
 
 def jensen_shannon_mi(enc_global: torch.Tensor, enc_local: torch.Tensor):
     """ Jensen-Shannon mutual information estimate.

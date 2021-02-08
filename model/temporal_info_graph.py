@@ -79,19 +79,17 @@ class TemporalConvolution(nn.Module):
         else:
             padding = 0
 
-        if per_feature:
-            self.conv = nn.Conv2d(self.c_in,
-                                  self.c_out,
-                                  kernel_size=self.kernel,
-                                  padding=padding,
-                                  groups=self.c_in,
-                                  bias=(self.weights is None or not debug))
-        else:
-            self.conv = nn.Conv2d(self.c_in,
-                                 self.c_out,
-                                 kernel_size=self.kernel,
-                                 padding=padding,
-                                 bias=(self.weights is None or not debug))
+        self.conv = nn.Conv1d(self.c_in,
+                                self.c_out,
+                                kernel_size=self.kernel[1],
+                                padding=padding)
+        # self.conv = nn.Conv2d(self.c_in,
+        #                       self.c_out,
+        #                       kernel_size=self.kernel,
+        #                       padding=padding,
+        #                       groups=self.c_in,
+        #                       bias=(self.weights is None or not debug))
+
 
         if weights is not None:
             self.conv.weight = torch.nn.Parameter(self.weights)
@@ -139,7 +137,12 @@ class TemporalConvolution(nn.Module):
             if hasattr(self, "bn_in") and self.bn_in:
                 X = self.bn1(X)
 
+        N, C, V, T = X.shape
+        X = X.permute(0, 2, 1, 3).reshape(N * V, C, T)  # ()
+
         X = self.conv(X)  # Expects: (batch, features, times, nodes)
+        
+        X = X.view(N, V, X.shape[1], -1).permute(0, 2, 1, 3)
 
         if not self.debug:
             X = self.bn2(X)
@@ -286,7 +289,7 @@ class TemporalInfoGraph(nn.Module):
     def __init__(self, dim_in: tuple = None, architecture: [tuple] = [(2, 32, 32, 32, 32)],
                  activation: str = "leakyReLU", batch_norm: bool = True,
                  A: torch.Tensor = None, discriminator_layer: bool = True, residual: bool = False,
-                 edge_weights: bool = False, per_feature=True, self_connection=True):
+                 edge_weights: bool = False, per_feature=True, self_connection=True, dropout=0.5):
         """ Initilization of the TIG model.
 
             Parameter:
@@ -332,12 +335,12 @@ class TemporalInfoGraph(nn.Module):
         for layer in architecture:
             if len(layer) == 5:
                 c_in, c_out, spec_out, out, kernel = layer
-                tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel, bn_in=False, per_feature=per_feature)
+                tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel, bn_in=False, per_feature=per_feature, dropout=dropout)
                 specConv = SpectralConvolution(c_in=c_out, c_out=spec_out)
-                tempConv2 = TemporalConvolution(c_in=spec_out, c_out=out, kernel=kernel, bn_in=False, per_feature=per_feature)
+                tempConv2 = TemporalConvolution(c_in=spec_out, c_out=out, kernel=kernel, bn_in=False, per_feature=per_feature, dropout=dropout)
             else:
                 c_in, c_out, out, kernel = layer
-                tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel, bn_in=False, per_feature=per_feature)
+                tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel, bn_in=False, per_feature=per_feature, dropout=dropout)
                 specConv = SpectralConvolution(c_in=c_out, c_out=out)
                 tempConv2 = nn.Identity()
 
@@ -365,6 +368,8 @@ class TemporalInfoGraph(nn.Module):
         if discriminator_layer:
             self.global_ff = FF(self.embedding_dim)
             self.local_ff = FF(self.embedding_dim)
+
+        self.avgFF = nn.Linear(A.shape[0], 1)
 
         self.model = nn.ModuleList(self.layers)
 
@@ -431,11 +436,12 @@ class TemporalInfoGraph(nn.Module):
         # global_Z = self.global_ff(Z.mean(dim=2)) # Simple mean readout, dim: (batch_size, emb_features)
         # local_Z = self.local_ff(Z)  # dim: (batch_size, emb_features, nodes), TODO: Validate the dimensions
         if self.discriminator_layer:
-            global_Z = self.global_ff(Z.mean(dim=2))
+            avgZ = self.avgFF(Z.permute(0,2,1).reshape(-1, Z.shape[2])).view(Z.shape[0], -1)
+            global_Z = self.global_ff(avgZ) #Z.mean(dim=2))
             local_Z = self.local_ff(self.reshape_3d_2d(Z))
             local_Z = self.reshape_2d_3d(local_Z, Z.shape)
         else:
-            global_Z = Z.mean(dim=2)
+            global_Z = self.avgFF(Z.permute(0,2,1).reshape(-1, Z.shape[2])).view(Z.shape[0], -1)
             local_Z = Z
 
         # Remove "empty" dimensions, i.e. dim = 1

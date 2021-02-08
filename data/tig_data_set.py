@@ -56,6 +56,7 @@ class TIGDataset(Dataset):
             # Download and extract data if not exists.
             self.load_data()
 
+
     def load_data(self):
         """ Load the data into memory.
             If the data doesn't exist the data is downloaded and extracted.
@@ -87,11 +88,31 @@ class TIGDataset(Dataset):
                         zip_file.extract(member, path=self.path)
             else:
                 log.info(f"Data exist extracted! ({self.path + self.name + '.npz'})")
+        
+        if not exists(self.path + 'kinetics_class_dict.json'):
+            #### Download #### 
+            url = f'http://85.215.86.232/tig/data/kinetics_class_dict.json'
+            r = requests.get(url, allow_redirects=True, stream=True)
+
+            pbar = tqdm(unit="B", total=int(r.headers['Content-Length'])//10**6, desc=f'Download {self.name} ')
+            chunkSize = 1024
+
+            Path(self.path).mkdir(parents=True, exist_ok=True)            
+            with open(self.path + 'kinetics_class_dict.json', 'wb') as f:
+                for chunk in r.iter_content(chunk_size=chunkSize): 
+                    if chunk: # filter out keep-alive new chunks
+                        pbar.update (len(chunk)//10**6)
+                        f.write(chunk)            
+            log.info(f"Class dictionary donwloaded! ({self.path + 'kinetics_class_dict.json'})")
+        else:
+            log.info(f"Class dictionary already exist! ({self.path + 'kinetics_class_dict.json'})")
 
         log.info(f"Load data...")
         data = np.load(self.path +  self.file_name, allow_pickle=True)
         self.x = data["x"]
         self.y = data["y"]
+        with open(self.path + 'kinetics_class_dict.json', "rb") as f:
+            self.classes = json.load(f)
 
     def split_data(self, x, y, train_ratio=0.8, val_ratio=0.1, mode=2, lim=None):
         """
@@ -209,6 +230,30 @@ class TIGDataset(Dataset):
     def __getitem__(self, idx):
         return (self.x[idx], self.y[idx])
 
+    # def process_labels(self, file_paths: [str] = None):
+    #     """
+    #     """
+    #     label_list = []
+
+    #     if file_paths is None:
+    #         file_paths = self.raw_paths
+
+    #     length = len(file_paths)
+    #     # start = length // 2
+
+    #     # class
+
+    #     # Iterate over all "raw" files
+    #     for i, json_file in enumerate(tqdm(file_paths, disable=(not self.verbose),
+    #                                        desc="Files processed:")):
+    #         try:
+    #             with open(json_file) as f:
+    #                 data = json.load(f)
+    #                 X = []
+    #                 data_list_y.append(data["label_index"])
+    #         else:
+
+
     def process(self, file_paths: [str] = None):
         """ Depricated for now!
         """    
@@ -227,7 +272,6 @@ class TIGDataset(Dataset):
         # Iterate over all "raw" files
         for i, json_file in enumerate(tqdm(file_paths, disable=(not self.verbose),
                                            desc="Files processed:")):
-                    
             try:
                 with open(json_file) as f:
                     data = json.load(f)
@@ -257,13 +301,12 @@ class TIGDataset(Dataset):
                             X[f, idx_min:idx_max, 1] = skeleton['pose'][1::2]
 
                             #### Centralization ####
-                            X[f, :, :] -= 0.5
+                            X[f, idx_min:idx_max, :] -= 0.5 #TODO: Check if it is applied twice
 
                             idx = ((np.asarray(skeleton['score']) - 0.5) == 0)
                             X[f, idx_min:idx_max, 0] = np.where(idx, 0, X[f, idx_min:idx_max, 0])
                             X[f, idx_min:idx_max, 1] = np.where(idx, 0, X[f, idx_min:idx_max, 1])
-                            
-                            
+
 
                 # Each data point corresponds to a list of graphs.
                 # data_list.append([X, y])

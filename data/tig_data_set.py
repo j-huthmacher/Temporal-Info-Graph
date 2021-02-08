@@ -11,22 +11,26 @@ import json
 from os import listdir, makedirs
 from os.path import isfile, join, exists
 from tqdm import tqdm
+import pickle
 
 import numpy as np
 import torch
 from torch.utils.data import Dataset, TensorDataset
-import networkx as nx 
+import networkx as nx
 
 from config.config import log
 
 ##########################
 # Custom DataSet Objects #
 ##########################
+
+
 class TIGDataset(Dataset):
     """ TIG data set for data that is too large for the memory.
     """
+
     def __init__(self, name: str, path: str = "./dataset/",
-                 s_files: [str] = None, verbose: bool = False):
+                 s_files: [str] = None, verbose: bool = False, process_label=False):
         """ Initialization of the TIG DataSet
 
             Paramters:
@@ -44,41 +48,118 @@ class TIGDataset(Dataset):
         self.name = name
         self.file_name = name + ".npz"
 
-        if s_files is not None:
-            files = []
-            for folder in s_files:
-                files.extend([join(folder, f) for f in listdir(folder)])
-            self.process(files)
-        else:           
+        if name == "stgcn":
             self.x = []
             self.y = []
+            self.load_stgcn_data()
+        else:
+            if s_files is not None:
+                files = []
+                for folder in s_files:
+                    files.extend([join(folder, f) for f in listdir(folder)])
+                if process_label:
+                    self.process_label(files)
+                else:
+                    self.process(files)
+            else:
+                self.x = []
+                self.y = []
 
-            # Download and extract data if not exists.
-            self.load_data()
+                # Download and extract data if not exists.
+                self.load_data()
 
+    def load_stgcn_data(self):
+        """
+        """
+        if not exists(self.path + self.file_name):
+            if not exists(self.path + self.name + ".rar"):
+                #### Download ####
+                url = f'http://85.215.86.232/tig/data/stgcn_kinetics_skeleton.zip'
+                r = requests.get(url, allow_redirects=True, stream=True)
+
+                pbar = tqdm(unit="B", total=int(
+                    r.headers['Content-Length']) // 10**6, desc=f'Download {self.name} ')
+                chunkSize = 1024
+
+                Path(self.path).mkdir(parents=True, exist_ok=True)
+                with open(self.path + self.name + ".zip", 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=chunkSize):
+                        if chunk:  # filter out keep-alive new chunks
+                            pbar.update(len(chunk) // 10**6)
+                            f.write(chunk)
+                log.info(
+                    f"Data set donwloaded! ({self.path + self.name + '.zip'})")
+            else:
+                log.info(
+                    f"Data exist already! ({self.path + self.name + '.zip'})")
+
+            if not exists(self.path + 'train_data.npy'):
+                #### Extract ####
+                with ZipFile(file=self.path + 'stgcn_kinetics_skeleton.zip') as zip_file:
+                    # Loop over each file
+                    for member in tqdm(iterable=zip_file.namelist(), total=len(zip_file.namelist()), desc=f'Extract {self.name} '):
+                        zip_file.extract(member, path=self.path)
+            else:
+                log.info(
+                    f"Data exist extracted! ({self.path + 'train_data.npy'})")
+
+        if not exists(self.path + 'kinetics_class_dict.json'):
+            #### Download ####
+            url = f'http://85.215.86.232/tig/data/kinetics_class_dict.json'
+            r = requests.get(url, allow_redirects=True, stream=True)
+
+            pbar = tqdm(unit="B", total=int(
+                r.headers['Content-Length']) // 10**6, desc=f'Download {self.name} ')
+            chunkSize = 1024
+
+            Path(self.path).mkdir(parents=True, exist_ok=True)
+            with open(self.path + 'kinetics_class_dict.json', 'wb') as f:
+                for chunk in r.iter_content(chunk_size=chunkSize):
+                    if chunk:  # filter out keep-alive new chunks
+                        pbar.update(len(chunk) // 10**6)
+                        f.write(chunk)
+            log.info(
+                f"Class dictionary donwloaded! ({self.path + 'kinetics_class_dict.json'})")
+        else:
+            log.info(
+                f"Class dictionary already exist! ({self.path + 'kinetics_class_dict.json'})")
+
+        log.info(f"Load data...")
+        stgcn_train_data = np.load(self.path + 'train_data.npy', mmap_mode="r").transpose((0,2,3,4,1))
+        with open(f"{self.path}train_label.pkl", "rb") as f:
+                stgcn_train_labels = pickle.load(f)
+
+        self.x = stgcn_train_data[:, :, : , : , :2].reshape(-1, 300, 36, 2)
+        self.y = np.array(stgcn_train_labels[1])
+
+        with open(self.path + 'kinetics_class_dict.json', "rb") as f:
+            self.classes = json.load(f)
 
     def load_data(self):
         """ Load the data into memory.
             If the data doesn't exist the data is downloaded and extracted.
         """
-        if not exists(self.path +  self.file_name):
+        if not exists(self.path + self.file_name):
             if not exists(self.path + self.name + ".rar"):
-                #### Download #### 
+                #### Download ####
                 url = f'http://85.215.86.232/tig/data/{self.name}.zip'
                 r = requests.get(url, allow_redirects=True, stream=True)
 
-                pbar = tqdm(unit="B", total=int(r.headers['Content-Length'])//10**6, desc=f'Download {self.name} ')
+                pbar = tqdm(unit="B", total=int(
+                    r.headers['Content-Length']) // 10**6, desc=f'Download {self.name} ')
                 chunkSize = 1024
 
-                Path(self.path).mkdir(parents=True, exist_ok=True)            
+                Path(self.path).mkdir(parents=True, exist_ok=True)
                 with open(self.path + self.name + ".zip", 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=chunkSize): 
-                        if chunk: # filter out keep-alive new chunks
-                            pbar.update (len(chunk)//10**6)
-                            f.write(chunk)            
-                log.info(f"Data set donwloaded! ({self.path + self.name + '.zip'})")
+                    for chunk in r.iter_content(chunk_size=chunkSize):
+                        if chunk:  # filter out keep-alive new chunks
+                            pbar.update(len(chunk) // 10**6)
+                            f.write(chunk)
+                log.info(
+                    f"Data set donwloaded! ({self.path + self.name + '.zip'})")
             else:
-                log.info(f"Data exist already! ({self.path + self.name + '.zip'})")
+                log.info(
+                    f"Data exist already! ({self.path + self.name + '.zip'})")
 
             if not exists(self.path + self.name + '.npz'):
                 #### Extract ####
@@ -87,28 +168,32 @@ class TIGDataset(Dataset):
                     for member in tqdm(iterable=zip_file.namelist(), total=len(zip_file.namelist()), desc=f'Extract {self.name} '):
                         zip_file.extract(member, path=self.path)
             else:
-                log.info(f"Data exist extracted! ({self.path + self.name + '.npz'})")
-        
+                log.info(
+                    f"Data exist extracted! ({self.path + self.name + '.npz'})")
+
         if not exists(self.path + 'kinetics_class_dict.json'):
-            #### Download #### 
+            #### Download ####
             url = f'http://85.215.86.232/tig/data/kinetics_class_dict.json'
             r = requests.get(url, allow_redirects=True, stream=True)
 
-            pbar = tqdm(unit="B", total=int(r.headers['Content-Length'])//10**6, desc=f'Download {self.name} ')
+            pbar = tqdm(unit="B", total=int(
+                r.headers['Content-Length']) // 10**6, desc=f'Download {self.name} ')
             chunkSize = 1024
 
-            Path(self.path).mkdir(parents=True, exist_ok=True)            
+            Path(self.path).mkdir(parents=True, exist_ok=True)
             with open(self.path + 'kinetics_class_dict.json', 'wb') as f:
-                for chunk in r.iter_content(chunk_size=chunkSize): 
-                    if chunk: # filter out keep-alive new chunks
-                        pbar.update (len(chunk)//10**6)
-                        f.write(chunk)            
-            log.info(f"Class dictionary donwloaded! ({self.path + 'kinetics_class_dict.json'})")
+                for chunk in r.iter_content(chunk_size=chunkSize):
+                    if chunk:  # filter out keep-alive new chunks
+                        pbar.update(len(chunk) // 10**6)
+                        f.write(chunk)
+            log.info(
+                f"Class dictionary donwloaded! ({self.path + 'kinetics_class_dict.json'})")
         else:
-            log.info(f"Class dictionary already exist! ({self.path + 'kinetics_class_dict.json'})")
+            log.info(
+                f"Class dictionary already exist! ({self.path + 'kinetics_class_dict.json'})")
 
         log.info(f"Load data...")
-        data = np.load(self.path +  self.file_name, allow_pickle=True)
+        data = np.load(self.path + self.file_name, allow_pickle=True)
         self.x = data["x"]
         self.y = data["y"]
         with open(self.path + 'kinetics_class_dict.json', "rb") as f:
@@ -131,12 +216,15 @@ class TIGDataset(Dataset):
 
         if mode > 1:
             if mode <= 2:
-                sets.append(list(zip(x[train_threshold:lim], y[train_threshold:lim])))
+                sets.append(
+                    list(zip(x[train_threshold:lim], y[train_threshold:lim])))
             else:
-                sets.append(list(zip(x[train_threshold:val_threshold], y[train_threshold:val_threshold])))
+                sets.append(
+                    list(zip(x[train_threshold:val_threshold], y[train_threshold:val_threshold])))
 
         if mode > 2:
-            sets.append(list(zip(x[train_threshold:val_threshold], y[train_threshold:val_threshold])))
+            sets.append(
+                list(zip(x[train_threshold:val_threshold], y[train_threshold:val_threshold])))
 
         return sets[0] if mode <= 1 else sets
 
@@ -175,16 +263,20 @@ class TIGDataset(Dataset):
             lim = self.y.shape[0]
 
         sets = []
-        sets.append(list(zip(self.x[:train_threshold], self.y[:train_threshold])))
+        sets.append(
+            list(zip(self.x[:train_threshold], self.y[:train_threshold])))
 
         if mode > 1:
             if mode <= 2:
-                sets.append(list(zip(self.x[train_threshold:lim], self.y[train_threshold:lim])))
+                sets.append(
+                    list(zip(self.x[train_threshold:lim], self.y[train_threshold:lim])))
             else:
-                sets.append(list(zip(self.x[train_threshold:val_threshold], self.y[train_threshold:val_threshold])))
-        
+                sets.append(list(zip(
+                    self.x[train_threshold:val_threshold], self.y[train_threshold:val_threshold])))
+
         if mode > 2:
-            sets.append(list(zip(self.x[val_threshold:lim], self.y[val_threshold:lim])))
+            sets.append(
+                list(zip(self.x[val_threshold:lim], self.y[val_threshold:lim])))
 
         return sets[0] if mode <= 1 else sets
 
@@ -193,13 +285,14 @@ class TIGDataset(Dataset):
         """
         unique, counts = np.unique(self.y, return_counts=True)
         merged = np.asarray((unique, counts)).T
-        sor = merged[merged[:,1].argsort()][::-1]
+        sor = merged[merged[:, 1].argsort()][::-1]
 
-        classes = sor[:num, 0] # Top n classes
+        classes = sor[:num, 0]  # Top n classes
         class_idx = np.where(np.isin(self.y, classes))
 
         train_threshold = int(self.y[class_idx].shape[0] * train_ratio)
-        val_threshold = int(self.y[class_idx].shape[0] * (train_ratio + val_ratio))
+        val_threshold = int(self.y[class_idx].shape[0]
+                            * (train_ratio + val_ratio))
 
         if lim is not None:
             lim = lim if lim <= self.y[class_idx].shape[0] else self.y[class_idx].shape[0]
@@ -209,18 +302,20 @@ class TIGDataset(Dataset):
             lim = self.y[class_idx].shape[0]
 
         sets = []
-        sets.append(list(zip(self.x[class_idx][:train_threshold], self.y[class_idx][:train_threshold])))
+        sets.append(list(
+            zip(self.x[class_idx][:train_threshold], self.y[class_idx][:train_threshold])))
 
-        if mode > 1 :
+        if mode > 1:
             if mode <= 2:
-                sets.append(list(zip(self.x[class_idx][train_threshold:lim], 
-                                    self.y[class_idx][train_threshold:lim])))
+                sets.append(list(zip(self.x[class_idx][train_threshold:lim],
+                                     self.y[class_idx][train_threshold:lim])))
             else:
-                sets.append(list(zip(self.x[class_idx][train_threshold:val_threshold], 
-                                    self.y[class_idx][train_threshold:val_threshold])))
+                sets.append(list(zip(self.x[class_idx][train_threshold:val_threshold],
+                                     self.y[class_idx][train_threshold:val_threshold])))
 
         if mode > 2:
-            sets.append(list(zip(self.x[class_idx][val_threshold:lim], self.y[class_idx][val_threshold:lim])))
+            sets.append(list(
+                zip(self.x[class_idx][val_threshold:lim], self.y[class_idx][val_threshold:lim])))
 
         return sets[0] if mode <= 1 else sets
 
@@ -230,38 +325,55 @@ class TIGDataset(Dataset):
     def __getitem__(self, idx):
         return (self.x[idx], self.y[idx])
 
-    # def process_labels(self, file_paths: [str] = None):
-    #     """
-    #     """
-    #     label_list = []
+    def process_label(self, file_paths: [str] = None):
+        """
+        """
+        label_list = []
 
-    #     if file_paths is None:
-    #         file_paths = self.raw_paths
+        if file_paths is None:
+            file_paths = self.raw_paths
 
-    #     length = len(file_paths)
-    #     # start = length // 2
+        length = len(file_paths)
+        # start = length // 2
 
-    #     # class
+        # class
 
-    #     # Iterate over all "raw" files
-    #     for i, json_file in enumerate(tqdm(file_paths, disable=(not self.verbose),
-    #                                        desc="Files processed:")):
-    #         try:
-    #             with open(json_file) as f:
-    #                 data = json.load(f)
-    #                 X = []
-    #                 data_list_y.append(data["label_index"])
-    #         else:
+        # Iterate over all "raw" files
+        for i, json_file in enumerate(tqdm(file_paths, disable=(not self.verbose),
+                                           desc="Files processed:")):
 
+            try:
+                with open(json_file) as f:
+                    data = json.load(f)
+
+                label_list.append({
+                    "id": json_file.split("/")[-1].split(".")[0],
+                    "label": data["label"],
+                    "label_index": data["label_index"]}
+                )
+            except:
+                pass
+
+        np.savez(f"{self.path}{self.name}_labels", labels=label_list)
+        log.info(f"File stored at {self.path}{self.name}_labels.npz")
+
+        # try:
+        #     with open(json_file) as f:
+        #         data = json.load(f)
+
+        #         label_list.append(json_file)
+        #         X = []
+        #         data_list_y.append(data["label_index"])
+        # else:
 
     def process(self, file_paths: [str] = None):
         """ Depricated for now!
-        """    
+        """
 
         data_list_x = []  # Will store the data for one output file.
         data_list_y = []
         file_num = 0  # Output file index.
-        start = 0 # Not used yet
+        start = 0  # Not used yet
 
         if file_paths is None:
             file_paths = self.raw_paths
@@ -285,28 +397,31 @@ class TIGDataset(Dataset):
                     num_frames = 300
                     num_features = 2
                     num_nodes = 36
-                    X = np.zeros((num_frames, num_nodes, num_features)).astype(np.float32)
+                    X = np.zeros((num_frames, num_nodes, num_features)).astype(
+                        np.float32)
 
                     for f, frame in enumerate(data['data']):
-                        frame["skeleton"].sort(key=lambda x: np.mean(x["score"]), reverse=True)
+                        frame["skeleton"].sort(
+                            key=lambda x: np.mean(x["score"]), reverse=True)
 
                         for s, skeleton in enumerate(frame["skeleton"]):
                             if s == 2:
                                 break  # Only consider the two skeletons with the highest average confidence
                             # TODO: Append along node axis! (36, 2)
-                            idx_min = int(s * num_nodes/2)
-                            idx_max = int((s + 1) * num_nodes/2)
+                            idx_min = int(s * num_nodes / 2)
+                            idx_max = int((s + 1) * num_nodes / 2)
 
                             X[f, idx_min:idx_max, 0] = skeleton['pose'][0::2]
                             X[f, idx_min:idx_max, 1] = skeleton['pose'][1::2]
 
                             #### Centralization ####
-                            X[f, idx_min:idx_max, :] -= 0.5 #TODO: Check if it is applied twice
+                            # TODO: Check if it is applied twice
+                            X[f, idx_min:idx_max, :] -= 0.5
 
                             idx = ((np.asarray(skeleton['score']) - 0.5) == 0)
+                            # Reset all coordinates where confidence score is 0
                             X[f, idx_min:idx_max, 0] = np.where(idx, 0, X[f, idx_min:idx_max, 0])
                             X[f, idx_min:idx_max, 1] = np.where(idx, 0, X[f, idx_min:idx_max, 1])
-
 
                 # Each data point corresponds to a list of graphs.
                 # data_list.append([X, y])
@@ -325,7 +440,7 @@ class TIGDataset(Dataset):
         # Output dim (num_samples, 2), per output dim x on pos 0 and y on pos 1
         # X dim: (num_frames, joints/nodes, features), where features is 4
         data_list_y = np.asarray(data_list_y).astype(np.float32)
-        np.savez(f"{self.path}{self.name}", x=data_list_x, y = data_list_y)
+        np.savez(f"{self.path}{self.name}", x=data_list_x, y=data_list_y)
         log.info(f"File stored at {self.path}{self.name}.npz")
 
 
@@ -335,6 +450,7 @@ class TIGDataset(Dataset):
 
 def files_exist(files):
     return len(files) != 0 and all(exists(f) for f in files)
+
 
 def file_exist(file):
     return exists(file)

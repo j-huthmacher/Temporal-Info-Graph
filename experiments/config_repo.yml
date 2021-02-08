@@ -131,7 +131,7 @@ complex_encoder:
     gradient_clipping: 0.2
   
 small_complex_encoder:
-  name: jsd
+  name: 2_classes
   data:
     name: kinetic_skeleton_5000
     path: ./content/
@@ -140,27 +140,31 @@ small_complex_encoder:
     batch_size: 32
     shuffle: True
   stratify:
-    num: 100
+    num: 2
     lim: 100
   emb_tracking: 10
   loss: bce
   encoder:
+    per_feature: True
     architecture: [
-      [2, 32, 64, 16],
-      [64, 64, 64, 16],
-      [64, 64, 128, 16]
+      [2, 32, 64, 64, 32],
+      [64, 64, 64, 64, 32],
+      [64, 64, 64, 64, 32],
+      [64, 64, 64, 64, 32]
    ]
     residual: True
-    # edge_weights: True
+    edge_weights: False
+    discriminator_layer: False
+    dropout: 0
   encoder_training:
     verbose: True
-    n_epochs: 50
+    n_epochs: 500
     optimizer_name: Adam
     optimizer:
       lr: 0.01
     gradient_clipping: 0.5
   classifier: 
-    in_dim: 128
+    in_dim: 64
     hidden_layers: [128, 256, 256]
   classifier_training:
     verbose: True

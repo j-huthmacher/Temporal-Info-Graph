@@ -27,6 +27,7 @@ import io
 
 from paramiko import SSHClient, SSHConfig, AutoAddPolicy, SFTPClient
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 
@@ -45,6 +46,9 @@ from tracker import Tracker
 from evaluation import svc_classify, mlp_classify, randomforest_classify
 from visualization.plots import plot_emb, plot_curve
 from visualization import create_gif
+
+import warnings
+warnings.filterwarnings("ignore")
 
 #### Default Experiment Configuration ####
 default = {
@@ -126,7 +130,6 @@ def experiment(tracker: Tracker, config: dict):
         loss_fn = jensen_shannon_mi
         if "loss" in config and config["loss"] == "bce":
             loss_fn = bce_loss
-
 
         solver = Solver(tig, loader, loss_fn)
 
@@ -726,14 +729,24 @@ class Experiment():
         x = self.emb_x
         y = self.emb_y
 
+        spectral_cmap = sns.color_palette("Spectral", as_cmap=True)
+        spectral_rgb = []
+        norm = mpl.colors.Normalize(vmin=0, vmax=255)
+
+        # for i in range(0, 255):
+            # k = mpl.colors.colorConverter.to_rgb(spectral_cmap(norm(i)))
+            # spectral_cmap.append(k)
+        
+        # spectral = matplotlib_to_plotly(magma_cmap, 255)
+
         if label is not None:
             x = x[np.isin(y, label)]
             y = y[np.isin(y, label)]
         x = pca.fit_transform(x)
 
         if plotly:
-            fig = px.scatter_3d(x=x[:, 0], y=x[:, 1], z=x[:, 2], 
-              color=y.astype(int))#,  colorscale='Viridis')#colormap=sns.color_palette("Spectral", as_cmap=True))
+            fig = px.scatter_3d(x=x[:, 0], y=x[:, 1], z=x[:, 2],
+            color=y.astype(int))#,  colorscale='Viridis')#colormap=sns.color_palette("Spectral", as_cmap=True))
             fig.show()
             return
 
@@ -752,6 +765,7 @@ class Experiment():
                 break
 
 def connect_to_slurm():
+
     """
     """
     with open(".slurm.json") as file:
@@ -777,3 +791,14 @@ def connect_to_slurm():
                   password=cfg_json["password"] , sock=jchannel)
     
     return slurm, jhost
+
+def matplotlib_to_plotly(cmap, pl_entries):
+    h = 1.0/(pl_entries-1)
+    pl_colorscale = []
+
+    for k in range(pl_entries):
+        C = map(np.uint8, np.array(cmap(k*h)[:3])*255)
+        pl_colorscale.append([k*h, 'rgb'+str((C[0], C[1], C[2]))])
+
+    return pl_colorscale
+

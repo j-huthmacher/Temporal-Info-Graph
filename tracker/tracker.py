@@ -1,6 +1,7 @@
 """
     @author: jhuthmacher
 """
+# pylint: disable=bare-except
 import io
 import os
 from typing import Any
@@ -147,6 +148,7 @@ class Tracker(object):
         log.addHandler(fh)
 
         self.save_nth = 100
+        self.best_loss = None
 
         # Assign model config
         self.__dict__ = {**self.__dict__, **config}
@@ -338,7 +340,7 @@ class Tracker(object):
                 f.close()
             except:
                 pass
-            
+
             if  "visuals" in self.cfg and "discriminator" in self.cfg["visuals"]:
                 f = Path(f"{self.local_path}loss.stats.expectations.csv")
                 if not f.is_file():
@@ -464,30 +466,16 @@ class Tracker(object):
                     Path(path).mkdir(parents=True, exist_ok=True)
                     fig.savefig(
                         path+f"/{self.solver.epoch}.discriminator.batch{self.solver.batch}.png")
-
-            #### Store Intermediate Embeddings ####
+            
+            #### Track every nth step embeddings ####
             if ("emb_tracking" in self.cfg and type(self.cfg["emb_tracking"]) == int and
-                self.solver.epoch % self.cfg["emb_tracking"] == 0) :
-                if not hasattr(self, "emb_x") and not hasattr(self, "emb_y") :
-                    self.emb_x = np.array([])
-                    self.emb_y = np.array([])
-                
-                if self.emb_x.size:
-                    self.emb_x = np.concatenate([self.emb_x, self.solver.yhat[0].detach().cpu().numpy()])
-                else:
-                    self.emb_x = self.solver.yhat[0].detach().cpu().numpy()
-                
-                if self.emb_y.size:
-                    self.emb_y = np.concatenate([self.emb_y, self.solver.batch_y.numpy()])
-                else:
-                    self.emb_y = self.solver.batch_y.numpy()
-                
-                if (self.solver.batch == len(self.solver.train_loader) - 1 and
-                    self.solver.phase == "train"):
-                    self.save_embeddings()
-                    self.emb_x = np.array([])
-                    self.emb_y = np.array([])
-
+                self.solver.epoch % self.cfg["emb_tracking"] == 0):
+                self.create_embeddings()
+            
+            #### Track Last Discriminator Values #####
+            if (self.solver.epoch == self.solver.train_cfg["n_epochs"] - 1):
+                np.save(f'{self.local_path}/discriminator.npy', loss_fn.discr_matr.detach().numpy())
+                np.save(f'{self.local_path}/discriminator_labels.npy', loss_fn.mask.detach().numpy())
 
     def track_epoch(self):
         """ Function that manages the tracking per epoch (called from the solver).
@@ -671,6 +659,20 @@ class Tracker(object):
         #### Store Intermediate Values ####
         self.save_loss_metric()
 
+        #### Store Best Model ####
+        if self.best_loss is None:
+            self.save_embeddings(tag="_best")
+            self.save_model(tag="_best")
+        elif self.solver.val_losses[-1] < self.best_loss:
+            self.save_embeddings(tag="_best")
+            self.save_model(tag="_best")
+
+        #### Track Intermediate Embeddings ####
+        if ("emb_tracking" in self.cfg and type(self.cfg["emb_tracking"]) == int and
+            self.solver.epoch % self.cfg["emb_tracking"] == 0):
+            self.save_embeddings()
+
+
         #### Plain values and Python objects ####
         if self.ex is not None:
             #### Remote Tracking ####
@@ -826,12 +828,59 @@ class Tracker(object):
             # np.save(f"{self.local_path}/TIG_{self.tag}val.metrics.npy",
             #         self.solver.val_metrics)
 
-    def save_embeddings(self):
+    def create_embeddings(self):
+        # #### Store Intermediate Embeddings ####
+        # if not hasattr(self, "emb_x") and not hasattr(self, "emb_y") :
+        #     self.emb_x = np.array([])
+        #     self.emb_y = np.array([])
+        
+        # if self.emb_x.size:
+        #     self.emb_x = np.concatenate([self.emb_x, self.solver.yhat[0].detach().cpu().numpy()])
+        # else:
+        #     self.emb_x = self.solver.yhat[0].detach().cpu().numpy()
+        
+        # if self.emb_y.size:
+        #     self.emb_y = np.concatenate([self.emb_y, self.solver.batch_y.numpy()])
+        # else:
+        #     self.emb_y = self.solver.batch_y.numpy()
+        
+        # if (self.solver.batch == len(self.solver.train_loader) - 1 and
+        #     self.solver.phase == "train"):
+        #     self.save_embeddings()
+        #     self.emb_x = np.array([])
+        #     self.emb_y = np.array([])
+        # Track the final embeddings after the TIG encoder is trained.
+        self.emb_x = np.array([])
+        self.emb_y = np.array([])
+        with torch.no_grad():
+            for batch_x, batch_y in self.solver.train_loader:
+                pred, _ = self.solver.model(batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1))
+                if self.emb_x.size:
+                    self.emb_x = np.concatenate(
+                        [self.emb_x, pred.detach().cpu().numpy()])
+                else:
+                    self.emb_x = pred.detach().cpu().numpy()
+
+                if self.emb_y.size:
+                    self.emb_y = np.concatenate([self.emb_y, batch_y.numpy()])
+                else:
+                    self.emb_y = batch_y.numpy()
+
+    def save_embeddings(self, tag: str =""):
         # buffer = io.BytesIO()
         # np.savez(buffer, x=self.emb_x, y=self.emb_y)
         # self.add_artifact(buffer.getvalue(), name=f"embeddings_{self.solver.phase}.npz")
+        self.create_embeddings()
 
-        np.savez(f'{self.local_path}/embeddings_{self.solver.phase}', x=self.emb_x, y=self.emb_y)
+        if tag == "_best" or "best":
+            np.savez(f'{self.local_path}/embeddings{tag}', x=self.emb_x, y=self.emb_y)
+        else:
+            np.savez(f'{self.local_path}/embeddings_{self.solver.phase}{tag}', x=self.emb_x, y=self.emb_y)
+    
+    def save_model(self, tag: str = ""):
+        """
+        """
+        torch.save(self.model, f'{self.local_path}/TIG_{self.tag.replace(".", "")}{tag}.pt')
 
     def track_locally(self):
         """ Function to track everything after the training/testing is done locally.

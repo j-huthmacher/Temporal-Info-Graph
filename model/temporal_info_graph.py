@@ -8,9 +8,7 @@ from math import floor
 import torch
 import torch.nn as nn
 
-class TestLayer(nn.Module):
-    def forward(self, x):
-        return x + 1
+from data.data_utils import get_normalized_adj
 
 
 class FF(nn.Module):
@@ -40,8 +38,8 @@ class TemporalConvolution(nn.Module):
     """
 
     def __init__(self, c_in: int, c_out: int = 1, kernel: Any = 1,
-                 weights: Any = None, activation: str = "leakyReLU", dropout = 0.5,
-                 bn_in: bool = True, debug=False, causal=False, per_feature=True):
+                 weights: Any = None, activation: str = "LeakyReLU", dropout = 0.5,
+                 bn_in: bool = False, debug=False, causal=False):
         """ Initialization of the temporal convolution, which is represented by a simple 2D convolution.
 
             Parameters:
@@ -83,13 +81,6 @@ class TemporalConvolution(nn.Module):
                                 self.c_out,
                                 kernel_size=self.kernel[1],
                                 padding=padding)
-        # self.conv = nn.Conv2d(self.c_in,
-        #                       self.c_out,
-        #                       kernel_size=self.kernel,
-        #                       padding=padding,
-        #                       groups=self.c_in,
-        #                       bias=(self.weights is None or not debug))
-
 
         if weights is not None:
             self.conv.weight = torch.nn.Parameter(self.weights)
@@ -103,12 +94,7 @@ class TemporalConvolution(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
         #### ACTIVATIOn ####
-        if activation == "leakyReLU":
-            self.activation = nn.LeakyReLU()
-        elif activation == "ReLU":
-            self.activation = nn.ReLU()
-        else:
-            self.activation = None
+        self.activation = getattr(nn, activation)()
 
         #### TO DEVICE #####
         self.conv = self.conv.to(self.device)
@@ -138,20 +124,19 @@ class TemporalConvolution(nn.Module):
                 X = self.bn1(X)
 
         N, C, V, T = X.shape
+        #### Transform the Data and apply 1D conv ####
         X = X.permute(0, 2, 1, 3).reshape(N * V, C, T)  # ()
-
         X = self.conv(X)  # Expects: (batch, features, times, nodes)
-        
         X = X.view(N, V, X.shape[1], -1).permute(0, 2, 1, 3)
 
         if not self.debug:
             X = self.bn2(X)
             X = self.dropout(X)
-        
+
         # X = X.permute(0, 1, 3, 2)
 
         return X if self.activation is None or self.debug else self.activation(X)
-    
+
     def convShape(self, dim_in: tuple):
         """ Calculate the output dimension of a convolutional layer.
 
@@ -179,8 +164,8 @@ class SpectralConvolution(nn.Module):
     """
 
     def __init__(self, c_in: int , c_out: int = 2, kernel: Any = 1,
-                 method: str = "gcn", weights: Any = None, activation: str = "leakyReLU",
-                 A: torch.Tensor = None, debug=False, self_connection= True):
+                 weights: Any = None, activation: str = "LeakyReLU",
+                 debug=False):
         """ Initialization of the spectral convolution layer.
 
             Parameters:
@@ -200,45 +185,20 @@ class SpectralConvolution(nn.Module):
         """
         super().__init__()
 
-        self.A = A
-        if self.A is not None and self_connection:
-            mask = torch.eye(self.A.shape[0])
-            self.A = mask + (1. - mask)*self.A
-
         self.c_in = c_in
         self.c_out = c_out
         self.kernel = kernel
-        self.method = method
         self.weights = weights
         self.debug = debug
 
         # Weights (or kernel matrix)
-        if method == "gcn":
-            if self.weights is not None:
-                # if len(self.weights.shape) > 1:
-                #     self.W = torch.nn.Parameter(torch.diag_embed(torch.tensor(self.weights)))
-                # else:
-                #     self.W = torch.nn.Parameter(torch.diag(torch.tensor(self.weights)))
-                self.W = torch.nn.Parameter(torch.tensor(self.weights))
-            else:
-                self.W = torch.nn.Parameter(torch.rand((self.c_in, self.c_out)))
-                # self.W = torch.nn.Parameter(torch.diag_embed(torch.rand((self.c_in, self.c_out))))
-                # self.W = torch.nn.Parameter(torch.diag(torch.rand((self.c_in))))
-
-        # From testing the STGCN implementation
-        # self.kernel_size = kernel
-        # self.conv = nn.Conv2d(c_in,
-        #                       c_out * self.kernel_size,
-        #                       kernel_size=(self.kernel_size, 1))
-
-
-        # Set activation
-        if activation == "leakyReLU":
-            self.activation = nn.LeakyReLU()
-        elif activation == "ReLU":
-            self.activation = nn.ReLU()
+        if self.weights is not None:
+            # self.W = torch.nn.Parameter(torch.tensor(self.weights))
+            self.W = weights
         else:
-            self.activation = None       
+            self.W = torch.nn.Parameter(torch.rand((self.c_in, self.c_out)))
+
+        self.activation = getattr(nn, activation)()
 
     @property
     def device(self):
@@ -250,7 +210,7 @@ class SpectralConvolution(nn.Module):
     def is_cuda(self):
         return next(self.parameters()).is_cuda
 
-    def forward(self, X: torch.Tensor, A: torch.Tensor = None):
+    def forward(self, X: torch.Tensor, A: torch.Tensor):
         """ Forward pass of the spectral convolution layer.
 
             Parameters:
@@ -262,18 +222,12 @@ class SpectralConvolution(nn.Module):
                 torch.Tensor: Convoluted feature tensor (feature map) of
                 dimension (batch, nodes, time, features)
         """
-        A = self.A if A is None else A
 
         if not isinstance(A, torch.Tensor):
             A = torch.tensor(A, dtype=torch.float32)
         A = A.type('torch.FloatTensor').to(self.device)
-        # Add self connections
-
-        # # TODO: Check why STCGN uses as an preceeding conv layer
 
         # # Adjacency matrix multiplication in time!
-        # # TODO: Adapt the indices to omit the permutation before and after.
-        self.W = self.W#.to(self.device)
         assert len(self.W.shape) == 2
 
         H = torch.einsum("lkjm, ji -> lkim", [X, A]) # Dim (batch, features, nodes, time)
@@ -286,10 +240,10 @@ class TemporalInfoGraph(nn.Module):
     """ Implementation of the temporal info graph model.
     """
 
-    def __init__(self, dim_in: tuple = None, architecture: [tuple] = [(2, 32, 32, 32, 32)],
-                 activation: str = "leakyReLU", batch_norm: bool = True,
-                 A: torch.Tensor = None, discriminator_layer: bool = True, residual: bool = False,
-                 edge_weights: bool = False, per_feature=True, self_connection=True, dropout=0.5):
+    def __init__(self, architecture: [tuple] = [(2, 32, 32, 32, 32)],
+                 batch_norm: bool = True, A: torch.Tensor = None,
+                 discriminator_layer: bool = True, residual: bool = False,
+                 edge_weights: bool = False, self_connection=True, dropout=0.5):
         """ Initilization of the TIG model.
 
             Parameter:
@@ -323,25 +277,29 @@ class TemporalInfoGraph(nn.Module):
         self.embedding_dim = architecture[-1][-2]
 
         if A is not None and self_connection:
-            mask = torch.eye(A.shape[0])
-            A = mask + (1. - mask)*A
-            self.register_buffer('A', A)
+            # mask = torch.eye(A.shape[0])
+            # A = mask + (1. - mask)*A
+            A = get_normalized_adj(A)
+            self.register_buffer('A', torch.tensor(A))
+        
+        # Artifical example for the small experiment config
+        # self.spectral_weights = torch.nn.Parameter(torch.rand((64, 64)))
 
         #### Initial Data Normalization ####
         if batch_norm and A is not None:
             # Features * nodes
-            self.data_norm = nn.BatchNorm1d(architecture[0][0] * A.shape[0])
+            self.data_norm = nn.BatchNorm1d(architecture[0][0] * A.shape[0] )
 
         for layer in architecture:
             if len(layer) == 5:
                 c_in, c_out, spec_out, out, kernel = layer
-                tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel, bn_in=False, per_feature=per_feature, dropout=dropout)
-                specConv = SpectralConvolution(c_in=c_out, c_out=spec_out)
-                tempConv2 = TemporalConvolution(c_in=spec_out, c_out=out, kernel=kernel, bn_in=False, per_feature=per_feature, dropout=dropout)
+                tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel,dropout=dropout)
+                specConv = SpectralConvolution(c_in=c_out, c_out=spec_out)#, weights=self.spectral_weights)
+                tempConv2 = TemporalConvolution(c_in=spec_out, c_out=out, kernel=kernel, dropout=dropout)
             else:
                 c_in, c_out, out, kernel = layer
-                tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel, bn_in=False, per_feature=per_feature, dropout=dropout)
-                specConv = SpectralConvolution(c_in=c_out, c_out=out)
+                tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel, dropout=dropout)
+                specConv = SpectralConvolution(c_in=c_out, c_out=out)#, weights=self.spectral_weights)
                 tempConv2 = nn.Identity()
 
             #### Residual Layer ####
@@ -349,7 +307,11 @@ class TemporalInfoGraph(nn.Module):
                 res_kernel = (1, (kernel*2)-1) if len(layer) == 5 else (1, kernel)
                 residual = nn.Sequential(nn.Conv2d(c_in, out, kernel_size=res_kernel),
                                          nn.BatchNorm2d(out))
-                self.layers.append(nn.Sequential(residual, tempConv1, specConv, tempConv2, nn.ReLU()))
+                self.layers.append(nn.Sequential(residual,
+                                                 tempConv1,
+                                                 specConv,
+                                                 tempConv2,
+                                                 nn.ReLU()))
             else:
                 # Build up sandwich architecture
                 self.layers.append(nn.Sequential(tempConv1, specConv, tempConv2, nn.ReLU()))
@@ -369,7 +331,7 @@ class TemporalInfoGraph(nn.Module):
             self.global_ff = FF(self.embedding_dim)
             self.local_ff = FF(self.embedding_dim)
 
-        self.avgFF = nn.Linear(A.shape[0], 1)
+        self.readout = nn.Sequential(nn.Linear(A.shape[0], 512), nn.Linear(512, 1))
 
         self.model = nn.ModuleList(self.layers)
 
@@ -436,12 +398,12 @@ class TemporalInfoGraph(nn.Module):
         # global_Z = self.global_ff(Z.mean(dim=2)) # Simple mean readout, dim: (batch_size, emb_features)
         # local_Z = self.local_ff(Z)  # dim: (batch_size, emb_features, nodes), TODO: Validate the dimensions
         if self.discriminator_layer:
-            avgZ = self.avgFF(Z.permute(0,2,1).reshape(-1, Z.shape[2])).view(Z.shape[0], -1)
+            avgZ = self.readout(Z.permute(0,2,1).reshape(-1, Z.shape[2])).view(Z.shape[0], -1)
             global_Z = self.global_ff(avgZ) #Z.mean(dim=2))
             local_Z = self.local_ff(self.reshape_3d_2d(Z))
             local_Z = self.reshape_2d_3d(local_Z, Z.shape)
         else:
-            global_Z = self.avgFF(Z.permute(0,2,1).reshape(-1, Z.shape[2])).view(Z.shape[0], -1)
+            global_Z = self.readout(Z.permute(0,2,1).reshape(-1, Z.shape[2])).view(Z.shape[0], -1)
             local_Z = Z
 
         # Remove "empty" dimensions, i.e. dim = 1

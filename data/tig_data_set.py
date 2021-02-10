@@ -2,7 +2,6 @@
 
     @author: jhuthmacher
 """
-import requests
 from zipfile import ZipFile
 from pathlib import Path
 import sys
@@ -12,13 +11,14 @@ from os import listdir, makedirs
 from os.path import isfile, join, exists
 from tqdm import tqdm
 import pickle
+import requests
 
 import numpy as np
 import torch
-from torch.utils.data import Dataset, TensorDataset
-import networkx as nx
+from torch.utils.data import Dataset
 
 from config.config import log
+from data import KINECT_ADJACENCY, NTU_ADJACENCY
 
 ##########################
 # Custom DataSet Objects #
@@ -30,7 +30,8 @@ class TIGDataset(Dataset):
     """
 
     def __init__(self, name: str, path: str = "./dataset/",
-                 s_files: [str] = None, verbose: bool = False, process_label=False):
+                 s_files: [str] = None, verbose: bool = False, process_label=False,
+                 lim: int = None, split_persons: bool = False):
         """ Initialization of the TIG DataSet
 
             Paramters:
@@ -47,11 +48,21 @@ class TIGDataset(Dataset):
         self.path = f"{path}{name}/"
         self.name = name
         self.file_name = name + ".npz"
+        self.lim = lim
+        self.split_persons = split_persons
+
+        self.x = []
+        self.y = []
 
         if name == "stgcn":
-            self.x = []
-            self.y = []
             self.load_stgcn_data()
+            self.A = KINECT_ADJACENCY
+        elif name == "stgcn_local":
+            self.load_stgcn_local()
+            self.A = KINECT_ADJACENCY
+        elif name == "ntu_rgb_d_local":
+            self.load_ntu_rgb_d_local()
+            self.A = NTU_ADJACENCY
         else:
             if s_files is not None:
                 files = []
@@ -62,38 +73,89 @@ class TIGDataset(Dataset):
                 else:
                     self.process(files)
             else:
-                self.x = []
-                self.y = []
-
                 # Download and extract data if not exists.
                 self.load_data()
+                self.A = KINECT_ADJACENCY
+
+        try:
+            path = "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics-skeleton_labels.npz"
+            self.label_info = np.load(path, allow_pickle=True, mmap_mode="r")["labels"]
+        except:
+            pass
+
+    def load_ntu_rgb_d_local(self):
+        """
+        """
+        path="D:/Temporal Info Graph/data/NTU-RGB-D/xsub/"
+        ntu_train_data = np.load(path + 'train_data.npy', mmap_mode="r")
+        
+        with open(f"{path}train_label.pkl", "rb") as f:
+                ntu_train_labels = pickle.load(f)
+
+        if self.lim is not None:
+            self.x = ntu_train_data[:self.lim].transpose(0,4,2,3,1).reshape(-1, 300, 25, 3)
+            self.y = np.array(ntu_train_labels[1])[:self.lim]
+        else:
+            self.x = ntu_train_data.transpose(0,4,2,3,1).reshape(-1, 300, 25, 3)
+            self.y = np.array(ntu_train_labels[1])
+
+    def load_stgcn_local(self):
+        """
+        """
+        path="D:/Temporal Info Graph/data/Kinetics/kinetics-skeleton/"
+        train_data = np.load(path + 'train_data.npy', mmap_mode="r")[:, :2, :, : , :] # Throw away the confidence score
+        with open(f"{path}train_label.pkl", "rb") as f:
+            train_labels = np.array(pickle.load(f)[1])
+
+        val_data = np.load(path + 'val_data.npy', mmap_mode="r")[:, :2, :, : , :] # Throw away the confidence score
+        with open(f"{path}val_label.pkl", "rb") as f:
+            val_labels = np.array(pickle.load(f)[1])
+
+        if self.lim is not None:
+            self.x = np.concatenate([train_data, val_data])[:self.lim]
+            self.y = np.concatenate([train_labels, val_labels])[:self.lim]
+        else:
+            self.x = np.concatenate([train_data, val_data])
+            self.y = np.concatenate([train_labels, val_labels])
+
+        if self.split_persons:
+            self.x = self.x.transpose(0, 4, 3, 2, 1).reshape(-1, 300, 18, 2)
+            self.y = self.y.repeat(2)
+        else:
+            self.x = self.x.reshape(-1, 2, 300, 36).transpose((0,2,3,1))
+
+        with open(self.path + 'kinetics_class_dict.json', "rb") as f:
+            self.classes = json.load(f)
 
     def load_stgcn_data(self):
         """
         """
-        if not exists(self.path + self.file_name):
+        fname = "train_data.npy"
+        fname1 = "val_data.npy"
+
+        if not exists(self.path+fname) and not exists(self.path+fname1):
             if not exists(self.path + self.name + ".rar"):
                 #### Download ####
                 url = f'http://85.215.86.232/tig/data/stgcn_kinetics_skeleton.zip'
                 r = requests.get(url, allow_redirects=True, stream=True)
 
-                pbar = tqdm(unit="B", total=int(
-                    r.headers['Content-Length']) // 10**6, desc=f'Download {self.name} ')
+                pbar = tqdm(r.iter_content(chunk_size=chunkSize), unit="MB", total=int(
+                            r.headers['Content-Length']) // 10**6, desc=f'Download {self.name} ')
                 chunkSize = 1024
 
                 Path(self.path).mkdir(parents=True, exist_ok=True)
-                with open(self.path + self.name + ".zip", 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=chunkSize):
+                with open(self.path + "stgcn_kinetics_skeleton.zip", 'wb') as f:
+                    for chunk in pbar:
                         if chunk:  # filter out keep-alive new chunks
                             pbar.update(len(chunk) // 10**6)
                             f.write(chunk)
                 log.info(
-                    f"Data set donwloaded! ({self.path + self.name + '.zip'})")
+                    f"Data set donwloaded! ({self.path + 'stgcn_kinetics_skeleton.zip'})")
             else:
                 log.info(
-                    f"Data exist already! ({self.path + self.name + '.zip'})")
+                    f"Data exist already! ({self.path + 'stgcn_kinetics_skeleton.zip'})")
 
-            if not exists(self.path + 'train_data.npy'):
+            if not exists(self.path + fname) and not exists(self.path+fname1):
                 #### Extract ####
                 with ZipFile(file=self.path + 'stgcn_kinetics_skeleton.zip') as zip_file:
                     # Loop over each file
@@ -101,20 +163,20 @@ class TIGDataset(Dataset):
                         zip_file.extract(member, path=self.path)
             else:
                 log.info(
-                    f"Data exist extracted! ({self.path + 'train_data.npy'})")
+                    f"Data exist extracted! ({self.path + fname} / {self.path + fname1})")
 
         if not exists(self.path + 'kinetics_class_dict.json'):
             #### Download ####
             url = f'http://85.215.86.232/tig/data/kinetics_class_dict.json'
             r = requests.get(url, allow_redirects=True, stream=True)
 
-            pbar = tqdm(unit="B", total=int(
-                r.headers['Content-Length']) // 10**6, desc=f'Download {self.name} ')
+            pbar = tqdm(r.iter_content(chunk_size=chunkSize), unit="B", total=int(
+                        r.headers['Content-Length']) // 10**6, desc=f'Download {self.name} ')
             chunkSize = 1024
 
             Path(self.path).mkdir(parents=True, exist_ok=True)
             with open(self.path + 'kinetics_class_dict.json', 'wb') as f:
-                for chunk in r.iter_content(chunk_size=chunkSize):
+                for chunk in pbar:
                     if chunk:  # filter out keep-alive new chunks
                         pbar.update(len(chunk) // 10**6)
                         f.write(chunk)
@@ -124,13 +186,30 @@ class TIGDataset(Dataset):
             log.info(
                 f"Class dictionary already exist! ({self.path + 'kinetics_class_dict.json'})")
 
-        log.info(f"Load data...")
-        stgcn_train_data = np.load(self.path + 'train_data.npy', mmap_mode="r").transpose((0,2,3,4,1))
+        log.info("Load data in memory...")
+        train_data = np.load(self.path + 'train_data.npy', mmap_mode="r")[:, :2, :, : , :] # Throw away the confidence score
         with open(f"{self.path}train_label.pkl", "rb") as f:
-                stgcn_train_labels = pickle.load(f)
+            train_labels = np.array(pickle.load(f)[1])
 
-        self.x = stgcn_train_data[:, :, : , : , :2].reshape(-1, 300, 36, 2)
-        self.y = np.array(stgcn_train_labels[1])
+        val_data = np.load(self.path + 'val_data.npy', mmap_mode="r")[:, :2, :, : , :] # Throw away the confidence score
+        with open(f"{self.path}val_label.pkl", "rb") as f:
+            val_labels = np.array(pickle.load(f)[1])
+
+        if self.lim is not None:
+            self.x = np.concatenate([train_data, val_data])[:self.lim]
+            self.y = np.concatenate([train_labels, val_labels])[:self.lim]
+        else:
+            self.x = np.concatenate([train_data, val_data])
+            self.y = np.concatenate([train_labels, val_labels])
+
+        if self.split_persons:
+            self.x = self.x.transpose(0, 4, 3, 2, 1).reshape(-1, 300, 18, 2)
+            self.y = self.y.repeat(2)
+        else:
+            self.x = self.x.reshape(-1, 2, 300, 36).transpose((0,2,3,1))
+
+        with open(self.path + 'kinetics_class_dict.json', "rb") as f:
+            self.classes = json.load(f)
 
         with open(self.path + 'kinetics_class_dict.json', "rb") as f:
             self.classes = json.load(f)
@@ -280,7 +359,8 @@ class TIGDataset(Dataset):
 
         return sets[0] if mode <= 1 else sets
 
-    def stratify(self, num: int, train_ratio=0.8, val_ratio=0.1, mode=2, lim=None):
+    def stratify(self, num: int, train_ratio=0.8, val_ratio=0.1, mode=2, lim=None,
+                 ret_idx=False):
         """
         """
         unique, counts = np.unique(self.y, return_counts=True)
@@ -295,11 +375,11 @@ class TIGDataset(Dataset):
                             * (train_ratio + val_ratio))
 
         if lim is not None:
-            lim = lim if lim <= self.y[class_idx].shape[0] else self.y[class_idx].shape[0]
+            # lim = lim if lim <= self.y[class_idx].shape[0] else self.y[class_idx].shape[0]
             train_threshold = int((lim) * train_ratio)
             val_threshold = int((lim) * (train_ratio + val_ratio))
         else:
-            lim = self.y[class_idx].shape[0]
+            lim = len(self.y[class_idx])#.shape[0]
 
         sets = []
         sets.append(list(
@@ -317,7 +397,10 @@ class TIGDataset(Dataset):
             sets.append(list(
                 zip(self.x[class_idx][val_threshold:lim], self.y[class_idx][val_threshold:lim])))
 
-        return sets[0] if mode <= 1 else sets
+        if ret_idx:
+            return (sets[0] if mode <= 1 else sets), class_idx
+        else:
+            return sets[0] if mode <= 1 else sets
 
     def __len__(self):
         return len(self.y)

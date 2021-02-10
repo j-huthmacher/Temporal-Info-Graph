@@ -467,6 +467,11 @@ class Tracker(object):
                     fig.savefig(
                         path+f"/{self.solver.epoch}.discriminator.batch{self.solver.batch}.png")
             
+            #### MI Matrix ####
+            if self.solver.loss_fn.__name__ == "jensen_shannon_mi":
+                np.save(f'{self.local_path}/jsd_mi.npy',
+                        loss_fn.E_pos.detach().numpy() - loss_fn.E_neg.detach().numpy())
+
             #### Track every nth step embeddings ####
             if ("emb_tracking" in self.cfg and type(self.cfg["emb_tracking"]) == int and
                 self.solver.epoch % self.cfg["emb_tracking"] == 0):
@@ -656,6 +661,12 @@ class Tracker(object):
                 name = "TIG.loss"
                 self.save_plot(fig, path, name)
 
+        if isinstance(self.solver.model, TemporalInfoGraph):
+            #### Track Intermediate Embeddings ####
+            if ("emb_tracking" in self.cfg and type(self.cfg["emb_tracking"]) == int and
+                self.solver.epoch % self.cfg["emb_tracking"] == 0):
+                self.save_embeddings()
+
             #### Store Best Model ####
             if self.best_loss is None:
                 self.save_embeddings(tag="_best")
@@ -666,12 +677,6 @@ class Tracker(object):
 
         #### Store Intermediate Values ####
         self.save_loss_metric()
-
-        #### Track Intermediate Embeddings ####
-        if ("emb_tracking" in self.cfg and type(self.cfg["emb_tracking"]) == int and
-            self.solver.epoch % self.cfg["emb_tracking"] == 0):
-            self.save_embeddings()
-
 
         #### Plain values and Python objects ####
         if self.ex is not None:
@@ -854,7 +859,11 @@ class Tracker(object):
         self.emb_y = np.array([])
         with torch.no_grad():
             for batch_x, batch_y in self.solver.train_loader:
-                pred, _ = self.solver.model(batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1))
+                # TODO: Check multiple person case
+                batch_x = batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1)
+                # batch_x = batch_x.permute(0,2,1,3).reshape(-1, 18, 2, 300).permute(0,2,1,3)
+                
+                pred, _ = self.solver.model(batch_x)
                 if self.emb_x.size:
                     self.emb_x = np.concatenate(
                         [self.emb_x, pred.detach().cpu().numpy()])
@@ -862,9 +871,9 @@ class Tracker(object):
                     self.emb_x = pred.detach().cpu().numpy()
 
                 if self.emb_y.size:
-                    self.emb_y = np.concatenate([self.emb_y, batch_y.numpy()])
+                    self.emb_y = np.concatenate([self.emb_y, batch_y.repeat(2).numpy()])
                 else:
-                    self.emb_y = batch_y.numpy()
+                    self.emb_y = batch_y.repeat(2).numpy()
 
     def save_embeddings(self, tag: str =""):
         # buffer = io.BytesIO()

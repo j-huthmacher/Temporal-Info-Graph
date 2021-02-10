@@ -134,6 +134,8 @@ class Solver():
             else:
                 batch_x = torch.tensor(
                     batch_x, dtype=torch.long).permute(0, 3, 2, 1)
+            # TODO: Mutliple Persons
+            # batch_x = batch_x.permute(0,2,1,3).reshape(-1, 18, 2, 300).permute(0,2,1,3)
         except:  # pylint: disable=bare-except
             # For testing MLP on iris
             if not isinstance(batch_x, torch.Tensor):
@@ -158,7 +160,7 @@ class Solver():
             else:
                 batch_y = batch_y.type(
                     "torch.LongTensor").to(self.model.device)
-
+            
             loss = self.loss_fn(self.yhat, batch_y)
 
             #### EVALUATION DURING TRAINING ####
@@ -191,6 +193,9 @@ class Solver():
             else:
                 batch_x = torch.tensor(
                     batch_x, dtype=torch.float32).permute(0, 3, 2, 1)
+            
+            # TODO: Mutliple Persons
+            # batch_x = batch_x.permute(0,2,1,3).reshape(-1, 18, 2, 300).permute(0,2,1,3)
         except:
             # For testing MLP on iris
             if not isinstance(batch_x, torch.Tensor):
@@ -285,6 +290,8 @@ class Solver():
             self.phase = "train"
             for self.batch, (batch_x, self.batch_y) in enumerate(tqdm(self.train_loader, total=len(self.train_loader), leave=False,
                                                                       disable=False, desc=f'Trai. Batch (Epoch: {self.epoch})')):
+                # TODO: Mutliple Persons
+                # self.train_step(batch_x, self.batch_y.repeat(2), encoder)
                 self.train_step(batch_x, self.batch_y, encoder)
 
                 #### Track Evaluation ####
@@ -407,9 +414,9 @@ class Solver():
                 "val. precision" in self.val_metrics and
                     "val. auc" in self.val_metrics):
                 pbar.set_description(f'Epochs ({self.model.__class__.__name__})' +
-                                     f'(Val (max) - acc: {"%.2f"%np.max(self.val_metrics["val. accuracy"])},' +
-                                     f'prec: {"%.2f"%np.max(self.val_metrics["val. precision"])},' +
-                                     f'auc: {"%.2f"%np.max(self.val_metrics["val. auc"])})')
+                                     f'(Val (mean) - acc: {"%.2f"%np.mean(self.val_metrics["val. accuracy"])}, ' +
+                                     f'prec: {"%.2f"%np.mean(self.val_metrics["val. precision"])}, ' +
+                                     f'auc: {"%.2f"%np.mean(self.val_metrics["val. auc"])})')
 
             if callable(track):
                 track("epoch")

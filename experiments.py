@@ -120,7 +120,7 @@ def experiment(tracker: Tracker, config: dict):
             loader = [train_loader, val_loader]
 
         #### TIG Set Up ####
-        tig = TemporalInfoGraph(**config["encoder"], A=KINECT_ADJACENCY)#.cuda()
+        tig = TemporalInfoGraph(**config["encoder"], A=data.A)#.cuda()
 
         if "print_summary" in config and config["print_summary"]:
             summary(tig.to("cpu"), input_size=(2, 36, 300), batch_size=config["loader"]["batch_size"])
@@ -142,7 +142,11 @@ def experiment(tracker: Tracker, config: dict):
             emb_y = np.array([])
             with torch.no_grad():
                 for batch_x, batch_y in train_loader:
-                    pred, _ = solver.model(batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1))
+                    #TODO: multiple Persons
+                    batch_x = batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1)
+                    # batch_x = batch_x.permute(0,2,1,3).reshape(-1, 18, 2, 300).permute(0,2,1,3)
+                
+                    pred, _ = solver.model(batch_x)
                     if emb_x.size:
                         emb_x = np.concatenate(
                             [emb_x, pred.detach().cpu().numpy()])
@@ -150,9 +154,9 @@ def experiment(tracker: Tracker, config: dict):
                         emb_x = pred.detach().cpu().numpy()
 
                     if emb_y.size:
-                        emb_y = np.concatenate([emb_y, batch_y.numpy()])
+                        emb_y = np.concatenate([emb_y, batch_y.repeat(2).numpy()])
                     else:
-                        emb_y = batch_y.numpy()
+                        emb_y = batch_y.repeat(2).numpy()
 
                 buffer = io.BytesIO()
                 np.savez(buffer, x=emb_x, y=emb_y)
@@ -590,7 +594,7 @@ class Experiment():
             else:
                 print(f"SVM Avg. Accuracy (top-1): {acc}")
             
-            if self.ssh is not True:
+            if self.ssh == "local":
                 f = Path(f"{self.path}sklearn.evaluation.txt")
                 f = open(f"{self.path}sklearn.evaluation.txt", "a")
                 f.write(f"SVM Avg. Accuracy (top-1): {acc}\n")
@@ -620,7 +624,7 @@ class Experiment():
             else:
                 print(f"MLP Avg. Accuracy (top-1): {acc}")
             
-            if self.ssh is not True:
+            if self.ssh == "local":
                 f = Path(f"{self.path}sklearn.evaluation.txt")
                 f = open(f"{self.path}sklearn.evaluation.txt", "a")
                 f.write(f"MLP Avg. Accuracy (top-1): {acc}\n")
@@ -650,7 +654,7 @@ class Experiment():
             else:
                 print(f"Random Forest Avg. Accuracy (top-1): {acc}")
             
-            if self.ssh is not True:
+            if self.ssh == "local":
                 f = Path(f"{self.path}sklearn.evaluation.txt")
                 f = open(f"{self.path}sklearn.evaluation.txt", "a")
                 f.write(f"Random Forest Avg. Accuracy (top-1): {acc}\n")

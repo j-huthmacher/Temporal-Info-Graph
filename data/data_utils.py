@@ -6,24 +6,37 @@ from typing import Any
 
 import numpy as np
 
-from data.tig_data_set import TIGDataset
+# from data.tig_data_set import TIGDataset
 
 
-def get_max_frames(dataset: TIGDataset):
-    """ Calculate the maximum number of frames for a data set.
-
-        Parameter:
-            dataset: TIGDataset or torch.Subset
-                The data set for wich the maximum number of frames is calculated.
-        Return:
-            int: Maximum number of frames for the given dataset.
+def get_normalized_adj(A):
     """
-    max_frames = -1
+    Returns the degree normalized adjacency matrix.
+    @source: https://github.com/FelixOpolka/STGCN-PyTorch/blob/846d511416b209c446310c1e4889c710f64ea6d7/utils.py#L26
+    """
+    A = A + np.diag(np.ones(A.shape[0], dtype=np.float32))
+    D = np.array(np.sum(A, axis=1)).reshape((-1,))
+    D[D <= 10e-5] = 10e-5    # Prevent infs
+    diag = np.reciprocal(np.sqrt(D))
+    A_wave = np.multiply(np.multiply(diag.reshape((-1, 1)), A),
+                         diag.reshape((1, -1)))
+    return A_wave
 
-    for data in dataset:
-        max_frames = max_frames if max_frames > data.frames else data.frames
+# def get_max_frames(dataset):
+#     """ Calculate the maximum number of frames for a data set.
 
-    return max_frames
+#         Parameter:
+#             dataset: TIGDataset or torch.Subset
+#                 The data set for wich the maximum number of frames is calculated.
+#         Return:
+#             int: Maximum number of frames for the given dataset.
+#     """
+#     max_frames = -1
+
+#     for data in dataset:
+#         max_frames = max_frames if max_frames > data.frames else data.frames
+
+#     return max_frames
 
 def convert_data(data: Any, to="float32"):
     """ Converts the data types in the data to the specified type.

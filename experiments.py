@@ -276,7 +276,10 @@ class Experiment():
         except:
             pass
         
-        self.config = self.load[con]("config", None)
+        try:
+            self.config = self.load[con]("config", None)
+        except:
+            self.config={}
 
         if con == "local":
             #### Set Up Logging ####

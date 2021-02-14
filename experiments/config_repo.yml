@@ -93,11 +93,13 @@ complex_encoder:
     name: kinetic_skeleton_5000
     path: ./content/
     verbose: True
-  loader:
+  loader: 
     batch_size: 256
-  data_split:
-    lim: 20000
-  emb_tracking: True
+    shuffle: True
+  stratify: 
+    num: 2
+    lim: 100
+  emb_tracking: 10
   print_summary: True
   encoder: 
     # [(c_in, c_out, spec_out, out, kernel)]
@@ -110,13 +112,16 @@ complex_encoder:
       [256, 256, 256, 256, 16],
       [256, 256, 256, 256, 16]
    ]
+   out_dim: 90
+   residual: True,
+   discriminator_layer: False,
+   dropout': 0
   encoder_training:
     verbose: True
-    n_epochs: 50
-    optimizer_name: SGD
+    n_epochs: 2000
+    optimizer_name: Adam
     optimizer:
       lr: 0.01
-      momentum: 0.9
     gradient_clipping: 0.2
   classifier: 
     in_dim: 256
@@ -124,41 +129,39 @@ complex_encoder:
   classifier_training:
     verbose: True
     n_epochs: 50
-    optimizer_name: SGD
+    optimizer_name: Adam
     optimizer:
-      lr: 0.001
-      momentum: 0.9
+      lr: 0.01
     gradient_clipping: 0.2
   
 small_complex_encoder:
-  name: 2_classes
+  name: stgcn_fully_connected_layer
   data:
-    name: kinetic_skeleton_5000
+    name: stgcn_2080
     path: ./content/
     verbose: True
   loader:
-    batch_size: 32
+    batch_size: 16
     shuffle: True
   stratify:
     num: 2
     lim: 100
   emb_tracking: 10
-  loss: bce
+  loss: jsd
   encoder:
-    per_feature: True
     architecture: [
-      [2, 32, 64, 64, 32],
-      [64, 64, 64, 64, 32],
-      [64, 64, 64, 64, 32],
-      [64, 64, 64, 64, 32]
+      [2, 64, 64, 64, 37],
+      [64, 64, 64, 64, 37],
+      [64, 64, 64, 64, 37],
+      [64, 64, 64, 64, 37]
    ]
     residual: True
-    edge_weights: False
+    # edge_weights: True
     discriminator_layer: False
     dropout: 0
   encoder_training:
     verbose: True
-    n_epochs: 500
+    n_epochs: 200
     optimizer_name: Adam
     optimizer:
       lr: 0.01
@@ -168,7 +171,7 @@ small_complex_encoder:
     hidden_layers: [128, 256, 256]
   classifier_training:
     verbose: True
-    n_epochs: 10
+    n_epochs: 50
     optimizer_name: Adam
     optimizer:
       lr: 0.01

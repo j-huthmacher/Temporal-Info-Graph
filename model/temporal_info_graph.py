@@ -7,6 +7,7 @@ from math import floor
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from data.data_utils import get_normalized_adj
 
@@ -198,6 +199,8 @@ class SpectralConvolution(nn.Module):
         else:
             self.W = torch.nn.Parameter(torch.rand((self.c_in, self.c_out)))
 
+        self.bn2 = nn.BatchNorm2d(self.c_out)
+
         self.activation = getattr(nn, activation)()
 
     @property
@@ -233,6 +236,8 @@ class SpectralConvolution(nn.Module):
         H = torch.einsum("lkjm, ji -> lkim", [X, A]) # Dim (batch, features, nodes, time)
         H = torch.matmul(H.permute(0, 3, 2, 1), self.W).permute(0, 3, 2, 1)
 
+        H = self.bn2(H)
+
         return H if self.activation is None or self.debug else self.activation(H)
 
 
@@ -243,7 +248,8 @@ class TemporalInfoGraph(nn.Module):
     def __init__(self, architecture: [tuple] = [(2, 32, 32, 32, 32)],
                  batch_norm: bool = True, A: torch.Tensor = None,
                  discriminator_layer: bool = True, residual: bool = False,
-                 edge_weights: bool = False, self_connection=True, dropout=0.5):
+                 edge_weights: bool = False, self_connection=True, dropout=0.5,
+                 summary=False, out_dim=12):
         """ Initilization of the TIG model.
 
             Parameter:
@@ -288,13 +294,16 @@ class TemporalInfoGraph(nn.Module):
         #### Initial Data Normalization ####
         if batch_norm and A is not None:
             # Features * nodes
-            self.data_norm = nn.BatchNorm1d(architecture[0][0] * A.shape[0] )
+            self.data_norm = nn.BatchNorm1d(architecture[0][0] * A.shape[0])
+            self.num_nodes = A.shape[0]
 
         for layer in architecture:
             if len(layer) == 5:
                 c_in, c_out, spec_out, out, kernel = layer
                 tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel,dropout=dropout)
-                specConv = SpectralConvolution(c_in=c_out, c_out=spec_out)#, weights=self.spectral_weights)
+                specConv = nn.Sequential(SpectralConvolution(c_in=c_out, c_out=spec_out),
+                                         SpectralConvolution(c_in=spec_out, c_out=spec_out),
+                                         SpectralConvolution(c_in=spec_out, c_out=spec_out))#, weights=self.spectral_weights)
                 tempConv2 = TemporalConvolution(c_in=spec_out, c_out=out, kernel=kernel, dropout=dropout)
             else:
                 c_in, c_out, out, kernel = layer
@@ -331,7 +340,21 @@ class TemporalInfoGraph(nn.Module):
             self.global_ff = FF(self.embedding_dim)
             self.local_ff = FF(self.embedding_dim)
 
-        self.readout = nn.Sequential(nn.Linear(A.shape[0], 512), nn.Linear(512, 1))
+        #### Fully Connected Layer ####
+        self.final_dim = 12 # Checked by  torch summary
+        self.emb_dim = 256
+        # Dimension from small debug example: [16, 64, 36, 52] (batch_size, ch_out, nodes, time)        
+        # In: (batch_size * nodes, ch_out * time), Out: (batch_size * nodes, 256)
+        # self.fc = nn.Sequential(nn.Linear(64 * self.final_dim, self.emb_dim))
+
+        self.summary = summary
+        self.fc = nn.Conv2d(out_dim, 1, kernel_size=1)
+
+        # self.fc = nn.Conv2d(64, 1, kernel_size=1)
+
+        self.readout = nn.Sequential(nn.Linear(self.emb_dim * self.num_nodes, self.emb_dim))
+        # self.readout = nn.Sequential(nn.Linear(self.emb_dim * 36, self.emb_dim))
+        # self.readout = nn.Identity() #nn.Sequential(nn.Linear(256 * 36, 256))
 
         self.model = nn.ModuleList(self.layers)
 
@@ -365,10 +388,10 @@ class TemporalInfoGraph(nn.Module):
 
         # Features could be twice or more!
         X = X.type('torch.FloatTensor').to(self.device)
+        N, C, V, T = X.shape
 
         #### Data Normalization ####
-        if hasattr(self, "data_norm"):
-            N, C, V, T = X.shape
+        if hasattr(self, "data_norm"):            
             X = X.reshape(N, V * C, T)  # Flatten to create large feature matrix
             X = self.data_norm(X)
             # Convert back to original format
@@ -385,28 +408,50 @@ class TemporalInfoGraph(nn.Module):
                 res = 0
 
             X = tempConv1(X)  # (batch_size, ch_out, nodes, time)
-            X = specConv(X, self.A * e_weight) # (batch_size, ch_out, nodes, time)
+            X = specConv[0](X, self.A * e_weight) # (batch_size, ch_out, nodes, time)
+            X = specConv[1](X, self.A * e_weight) # (batch_size, ch_out, nodes, time)
+            X = specConv[2](X, self.A * e_weight) # (batch_size, ch_out, nodes, time)
             X = tempConv2(X)  # (batch_size, ch_out, nodes, time)
             X = activation(X + res)
 
-        # (batch_size, ch_out, nodes, time)
-        Z = X.mean(dim=3)
+        if self.summary:
+            # # (batch_size, ch_out, nodes, time)
+            Z = X.mean(dim=3)
+            # # (batch_size, ch_out, nodes)
+        else:
 
-        # Mean readout: Average each feature over all nodes --> dimension (features, 1)
-        # Average over dimension 2, dim 2 corresponds to the nodes
-        # (We want to aggregate the representation of each node!)
-        # global_Z = self.global_ff(Z.mean(dim=2)) # Simple mean readout, dim: (batch_size, emb_features)
-        # local_Z = self.local_ff(Z)  # dim: (batch_size, emb_features, nodes), TODO: Validate the dimensions
+            #### Fully Connected Layer ####
+            # Dimension from small debug example: [16, 64, 36, 52] (batch_size, ch_out, nodes, time)
+
+            # N, C, V, T = X.shape
+            # X = X.permute(0,2,1,3).reshape(N*V, C*T)
+            # In: (batch_size * nodes, ch_out * time), Out: (batch_size * nodes, 256)
+            Z = torch.squeeze(self.fc(X.permute(0,3,1,2)))
+            # In: (batch_size * nodes, 256) Out: (batch_size, 256, nodes)
+            # Z = Z.view(N, V, -1)
+
+            # global pooling
+            # Z = torch.squeeze(F.avg_pool2d(X, (1, X.shape[-1])), dim=-1)
+            # X = x.view(N, M, -1, 1, 1).mean(dim=1)
+
+
         if self.discriminator_layer:
             avgZ = self.readout(Z.permute(0,2,1).reshape(-1, Z.shape[2])).view(Z.shape[0], -1)
             global_Z = self.global_ff(avgZ) #Z.mean(dim=2))
             local_Z = self.local_ff(self.reshape_3d_2d(Z))
             local_Z = self.reshape_2d_3d(local_Z, Z.shape)
         else:
-            global_Z = self.readout(Z.permute(0,2,1).reshape(-1, Z.shape[2])).view(Z.shape[0], -1)
-            local_Z = Z
+            # In: (batch_size, ch_out, nodes) Out: (batch_size, ch_out)
+            # Stack nodes on top of each other, i.e concat all nodes per graph
+            # global_Z = self.readout(Z.permute(0,2,1).reshape(-1, Z.shape[2])).view(Z.shape[0], -1)
+            # local_Z = Z
+
+            global_Z = torch.squeeze(F.avg_pool2d(Z, (1, Z.shape[-1])), dim=-1)
+            # self.readout(Z.view(N, -1))#.view(Z.shape[0], -1)
+            local_Z = Z#.permute(0, 2, 1)
 
         # Remove "empty" dimensions, i.e. dim = 1
+        # global_ecn
         return torch.squeeze(global_Z, dim=-1), torch.squeeze(local_Z, dim=-1)
 
     def reshape_3d_2d(self, x):

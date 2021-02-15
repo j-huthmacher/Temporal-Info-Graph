@@ -112,7 +112,7 @@ class TIGDataset(Dataset):
         path="D:/Temporal Info Graph/data/Kinetics/kinetics-skeleton/"
         if self.name == "stgcn_2080":
             log.info(f"Load data...")
-            data = np.load(path + "stgcn_2080.npz", allow_pickle=True, mmap_mode="r")
+            data = np.load(self.path + "stgcn_2080.npz", allow_pickle=True, mmap_mode="r")
             self.x = data["x"]
             self.y = data["y"]        
         else:
@@ -120,27 +120,6 @@ class TIGDataset(Dataset):
             data = np.load(path + "stgcn.npz", allow_pickle=True, mmap_mode="r")
             self.x = data["x"]
             self.y = data["y"]  
-            
-            # train_data = np.load(path + 'train_data.npy', mmap_mode="r")[:, :2, :, : , :] # Throw away the confidence score
-            # with open(f"{path}train_label.pkl", "rb") as f:
-            #     train_labels = np.array(pickle.load(f)[1])
-
-            # val_data = np.load(path + 'val_data.npy', mmap_mode="r")[:, :2, :, : , :] # Throw away the confidence score
-            # with open(f"{path}val_label.pkl", "rb") as f:
-            #     val_labels = np.array(pickle.load(f)[1])
-
-            # if self.lim is not None:
-            #     self.x = np.concatenate([train_data, val_data])[:self.lim]
-            #     self.y = np.concatenate([train_labels, val_labels])[:self.lim]
-            # else:
-            #     self.x = np.concatenate([train_data, val_data])
-            #     self.y = np.concatenate([train_labels, val_labels])
-
-            # if self.split_persons:
-            #     self.x = self.x.transpose(0, 4, 3, 2, 1).reshape(-1, 300, 18, 2)
-            #     self.y = self.y.repeat(2)
-            # else:
-            #     self.x = self.x.reshape(-1, 2, 300, 36).transpose((0,2,3,1))
 
         with open(self.path + 'kinetics_class_dict.json', "rb") as f:
             self.classes = json.load(f)

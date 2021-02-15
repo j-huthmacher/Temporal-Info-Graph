@@ -295,7 +295,7 @@ class Solver():
                 self.train_step(batch_x, self.batch_y, encoder)
 
                 #### Track Evaluation ####
-                if isinstance(self.yhat, tuple):
+                if isinstance(self.yhat, tuple) and hasattr(self.loss_fn, "discr_matr"):
                     yhat_norm = torch.sigmoid(
                         self.loss_fn.discr_matr).detach().numpy()
                     yhat_norm[yhat_norm > 0.5] = 1
@@ -320,7 +320,7 @@ class Solver():
                     train_batch_metric["auc"] = (train_batch_metric["auc"] + [auc]
                                                  if "auc" in train_batch_metric
                                                  else [auc])
-                else:
+                elif not isinstance(self.yhat, tuple):
                     top_k = evaluate(self.train_pred, self.train_label)
                     train_batch_metric["top-1"] = (train_batch_metric["top-1"] + [top_k[0]]
                                                    if "top-1" in train_batch_metric
@@ -357,7 +357,7 @@ class Solver():
                                                                               desc=f'Vali. Batch (Epoch: {self.epoch})')):
                         self.val_step(batch_x, self.batch_y, encoder)
 
-                        if isinstance(self.yhat, tuple):
+                        if isinstance(self.yhat, tuple) and hasattr(self.loss_fn, "discr_matr"):
                             yhat_norm = torch.sigmoid(
                                 self.loss_fn.discr_matr).detach().numpy()
                             yhat_norm[yhat_norm > 0.5] = 1
@@ -382,7 +382,7 @@ class Solver():
                             val_batch_metric["auc"] = (val_batch_metric["auc"] + [auc]
                                                        if "auc" in val_batch_metric
                                                        else [auc])
-                        else:
+                        elif not isinstance(self.yhat, tuple):
                             top_k = evaluate(self.val_pred, self.val_label)
                             val_batch_metric["top-1"] = (val_batch_metric["top-1"] + [top_k[0]]
                                                            if "top-1" in val_batch_metric

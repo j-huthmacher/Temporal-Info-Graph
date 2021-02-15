@@ -167,15 +167,21 @@ elif args.eval:
 elif args.prep_data:
     # pass
     # Prepare data 
+    # data_paths = [
+    #     "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics_train/",
+    #     "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics_val/"
+    # ]
+
     data_paths = [
-        "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics_train/",
-        "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics_val/"
+        "D:/Temporal Info Graph/kinetics-skeleton/kinetics_train/",
+        "D:/Temporal Info Graph/kinetics-skeleton/kinetics_val/"
     ]
 
     output = "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/"
 
-    log.info("Process data")
+    log.info("Process data - Class information")
 
-    _ = TIGDataset(name="kinetics-skeleton", s_files=data_paths, path=output, verbose=True)
+    _ = TIGDataset(name="kinetics-skeleton", s_files=data_paths, path=output,
+                   verbose=True, process_label=True)
 
     log.info("Data set processed")

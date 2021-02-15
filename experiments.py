@@ -14,16 +14,12 @@ import plotly.express as px
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from imblearn.over_sampling import RandomOverSampler
-from sklearn.model_selection import train_test_split
 from sklearn.decomposition import PCA
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchsummary import summary
 
 from PIL import Image
-import io
 
 from paramiko import SSHClient, SSHConfig, AutoAddPolicy, SFTPClient
 
@@ -40,8 +36,8 @@ import sacred
 from config.config import log, create_logger
 from data import KINECT_ADJACENCY
 from data.tig_data_set import TIGDataset
-from model import MLP, Solver, TemporalInfoGraph
-from model.loss import jensen_shannon_mi, bce_loss
+from model import MLP, Solver, TemporalInfoGraph, TemporalInfoGraphLSTM
+from model.loss import jensen_shannon_mi, bce_loss, hypersphere_loss
 from tracker import Tracker
 from evaluation import svc_classify, mlp_classify, randomforest_classify
 from visualization.plots import plot_emb, plot_curve
@@ -120,7 +116,9 @@ def experiment(tracker: Tracker, config: dict):
             loader = [train_loader, val_loader]
 
         #### TIG Set Up ####
+        # TODO: Test LSTM model
         tig = TemporalInfoGraph(**config["encoder"], A=data.A)#.cuda()
+        # tig = TemporalInfoGraphLSTM(A=data.A)
 
         if "print_summary" in config and config["print_summary"]:
             summary(tig.to("cpu"), input_size=(2, 36, 300), batch_size=config["loader"]["batch_size"])
@@ -130,6 +128,7 @@ def experiment(tracker: Tracker, config: dict):
         loss_fn = jensen_shannon_mi
         if "loss" in config and config["loss"] == "bce":
             loss_fn = bce_loss
+        # loss_fn = hypersphere_loss
 
         solver = Solver(tig, loader, loss_fn)
 
@@ -236,10 +235,13 @@ class Experiment():
             
             self.tig_train_metrics = self.load[con]("metric", "TIG_train.metrics.npz")
             self.tig_val_metrics = self.load[con]("metric", "TIG_val.metrics.npz")
-
-            self.tig_best = self.load[con]("conl", "TIG__best.pt")
-            self.tig = self.load[con]("conl", "TIG_.pt")
-        except:
+            try:
+                self.tig_best = self.load[con]("model", "TIG__best.pt")
+            except:
+                pass
+            self.tig = self.load[con]("model", "TIG_.pt")
+        except Exception as e:
+            print(e)
             pass
 
         #### TIG Discriminator Scores ####
@@ -297,6 +299,11 @@ class Experiment():
             f.prefetch()
             f = f.read()
             return np.load(io.BytesIO(f))
+        elif name == "model":
+            f = sftp.open(self.path + file_name)
+            f.prefetch()
+            f = f.read()
+            return torch.load(io.BytesIO(f))
         elif name == "loss":
             f = sftp.open(self.path + file_name)
             f.prefetch()

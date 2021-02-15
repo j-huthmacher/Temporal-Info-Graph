@@ -61,6 +61,8 @@ def create_gif(fig: Any, path: str, name: str):
 
         im.save(fp=path + name, format='GIF', append_images=images[path],
                 save_all=True, duration=200, loop=0)
+        im.save(fp=path + name, format='MP4', append_images=images[path],
+                save_all=True, duration=200, loop=0)
         # fig.savefig(path.replace(".gif", ".final.png"), dpi=150)
         # if not fill:
         #     images[path].clear()
@@ -99,7 +101,7 @@ def animate_skeleton(data: pd.DataFrame, annot: bool = False, lim_frames: Any = 
     except:  #pylint: disable=bare-except
         # Ignore empty skeletons
         pass
-    
+
     x = np.asarray(x)
     y = np.asarray(y)
 

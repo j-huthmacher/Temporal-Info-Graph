@@ -81,8 +81,14 @@ def plot_emb(x: np.array, y: np.array, title: str = "", ax: matplotlib.axes.Axes
         fig, ax = plt.subplots(**subplot_args)
     ax = np.squeeze([ax]) if np.squeeze([ax]).shape else [ax]
 
-    ax[0].scatter(x[:,0], x[:,1], c=y.astype(int), cmap=sns.color_palette("Spectral", as_cmap=True),
-                  edgecolors='w')
+    cmap = matplotlib.cm.get_cmap('Spectral')
+    norm = matplotlib.colors.Normalize(vmin=np.min(y), vmax=np.max(y))
+    y = y.astype(int)
+    for label in np.unique(y.astype(int)):
+        ax[0].scatter(x[y==label][:,0], x[y==label][:,1], color=cmap(norm(label)), label=label,
+                      edgecolors='w')
+    
+    ax[0].legend()
     
     ax[0].set_title(f"{title} {mode_str}")
     if count:
@@ -292,7 +298,22 @@ def plot_heatmap(matrix: np.ndarray, xlabel: str = "", ylabel: str = "", ticks: 
 
     return ax.figure
 
+def plot_skeleton(x: np.array, y: np.array, A: np.array, ax = None):
+    """
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(6, 6))
 
+    # Edges
+    lines = []
+    for i in range(0, len(x)):  #pylint: disable=consider-using-enumerate
+        for e_x, e_y in zip(x[np.where(A[i]==1)], y[np.where(A[i]==1)]):
+            lines.append(ax.plot([x[i],e_x], [y[i], e_y], linestyle='-', linewidth=0.5, color='#c4c4c4', markersize=0))
+    
+    # Nodes
+    nodes = ax.scatter(x, y, marker='o', linewidth=0, zorder=3)
+
+    return ax.figure, ax
 
 #### Consolidated Plots ####
 def plot_loss_metric(loss_cfg: dict, metric_cfg: dict, title="", model_name = "TIG"):

@@ -131,7 +131,7 @@ class TemporalConvolution(nn.Module):
         X = X.view(N, V, X.shape[1], -1).permute(0, 2, 1, 3)
 
         if not self.debug:
-            X = self.bn2(X)
+            # X = self.bn2(X)
             X = self.dropout(X)
 
         # X = X.permute(0, 1, 3, 2)
@@ -236,7 +236,7 @@ class SpectralConvolution(nn.Module):
         H = torch.einsum("lkjm, ji -> lkim", [X, A]) # Dim (batch, features, nodes, time)
         H = torch.matmul(H.permute(0, 3, 2, 1), self.W).permute(0, 3, 2, 1)
 
-        H = self.bn2(H)
+        # H = self.bn2(H)
 
         return H if self.activation is None or self.debug else self.activation(H)
 
@@ -287,9 +287,6 @@ class TemporalInfoGraph(nn.Module):
             # A = mask + (1. - mask)*A
             A = get_normalized_adj(A)
             self.register_buffer('A', torch.tensor(A))
-        
-        # Artifical example for the small experiment config
-        # self.spectral_weights = torch.nn.Parameter(torch.rand((64, 64)))
 
         #### Initial Data Normalization ####
         if batch_norm and A is not None:
@@ -297,18 +294,24 @@ class TemporalInfoGraph(nn.Module):
             self.data_norm = nn.BatchNorm1d(architecture[0][0] * A.shape[0])
             self.num_nodes = A.shape[0]
 
+        # self.upscale = nn.Sequential(nn.Linear(2, 64), nn.LeakyReLU())
+        # self.specConvIn = SpectralConvolution(c_in=64, c_out=64)
+        # self.specConvOut = SpectralConvolution(c_in=64, c_out=64)
+
         for layer in architecture:
             if len(layer) == 5:
                 c_in, c_out, spec_out, out, kernel = layer
-                tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel,dropout=dropout)
+                tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out,
+                                                kernel=kernel, dropout=dropout)
                 specConv = nn.Sequential(SpectralConvolution(c_in=c_out, c_out=spec_out),
-                                         SpectralConvolution(c_in=spec_out, c_out=spec_out),
                                          SpectralConvolution(c_in=spec_out, c_out=spec_out))#, weights=self.spectral_weights)
+                # specConv = nn.Identity()
                 tempConv2 = TemporalConvolution(c_in=spec_out, c_out=out, kernel=kernel, dropout=dropout)
             else:
                 c_in, c_out, out, kernel = layer
                 tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out, kernel=kernel, dropout=dropout)
-                specConv = SpectralConvolution(c_in=c_out, c_out=out)#, weights=self.spectral_weights)
+                # specConv = SpectralConvolution(c_in=c_out, c_out=out)#, weights=self.spectral_weights)
+                specConv = nn.Identity()
                 tempConv2 = nn.Identity()
 
             #### Residual Layer ####
@@ -316,14 +319,15 @@ class TemporalInfoGraph(nn.Module):
                 res_kernel = (1, (kernel*2)-1) if len(layer) == 5 else (1, kernel)
                 residual = nn.Sequential(nn.Conv2d(c_in, out, kernel_size=res_kernel),
                                          nn.BatchNorm2d(out))
+                # residual = nn.Identity() # Feed the raw input to the end
                 self.layers.append(nn.Sequential(residual,
                                                  tempConv1,
                                                  specConv,
                                                  tempConv2,
-                                                 nn.ReLU()))
+                                                 nn.LeakyReLU()))
             else:
                 # Build up sandwich architecture
-                self.layers.append(nn.Sequential(tempConv1, specConv, tempConv2, nn.ReLU()))
+                self.layers.append(nn.Sequential(tempConv1, specConv, tempConv2, nn.LeakyReLU()))
 
             #### Edge Paramter ####
             if A is not None:
@@ -342,7 +346,7 @@ class TemporalInfoGraph(nn.Module):
 
         #### Fully Connected Layer ####
         self.final_dim = 12 # Checked by  torch summary
-        self.emb_dim = 256
+        self.emb_dim = 64
         # Dimension from small debug example: [16, 64, 36, 52] (batch_size, ch_out, nodes, time)        
         # In: (batch_size * nodes, ch_out * time), Out: (batch_size * nodes, 256)
         # self.fc = nn.Sequential(nn.Linear(64 * self.final_dim, self.emb_dim))
@@ -350,12 +354,16 @@ class TemporalInfoGraph(nn.Module):
         self.summary = summary
         self.fc = nn.Conv2d(out_dim, 1, kernel_size=1)
 
+        self.emb_bn = nn.BatchNorm1d(256)
+
         # self.fc = nn.Conv2d(64, 1, kernel_size=1)
 
-        self.readout = nn.Sequential(nn.Linear(self.emb_dim * self.num_nodes, self.emb_dim))
+
+        self.readout = nn.Sequential(nn.Linear(36*256, 256))
         # self.readout = nn.Sequential(nn.Linear(self.emb_dim * 36, self.emb_dim))
         # self.readout = nn.Identity() #nn.Sequential(nn.Linear(256 * 36, 256))
 
+        self.bn = nn.BatchNorm2d(out)
         self.model = nn.ModuleList(self.layers)
 
     @property
@@ -396,6 +404,8 @@ class TemporalInfoGraph(nn.Module):
             X = self.data_norm(X)
             # Convert back to original format
             X = X.reshape(N, C, V, T)
+        
+        # concat_local = []
 
         for layer, e_weight in zip(self.model, self.edge_weights):
             # Expected layer = [(resLayer), tempConv1, specConv, tempConv2, activation]
@@ -407,25 +417,32 @@ class TemporalInfoGraph(nn.Module):
             else:
                 res = 0
 
+            # X = self.specConvIn(X, self.A)
             X = tempConv1(X)  # (batch_size, ch_out, nodes, time)
+            # X = self.specConvOut(X, self.A)
             X = specConv[0](X, self.A * e_weight) # (batch_size, ch_out, nodes, time)
             X = specConv[1](X, self.A * e_weight) # (batch_size, ch_out, nodes, time)
-            X = specConv[2](X, self.A * e_weight) # (batch_size, ch_out, nodes, time)
+            # X = specConv[2](X, self.A * e_weight) # (batch_size, ch_out, nodes, time)
             X = tempConv2(X)  # (batch_size, ch_out, nodes, time)
-            X = activation(X + res)
+            X = activation(X+ res)
+            X = self.bn(X)
+
+            # Consider representations at different scale 
+            # concat_local.append(F.avg_pool2d(X, (1, X.shape[-1])))
 
         if self.summary:
             # # (batch_size, ch_out, nodes, time)
             Z = X.mean(dim=3)
             # # (batch_size, ch_out, nodes)
         else:
-
             #### Fully Connected Layer ####
             # Dimension from small debug example: [16, 64, 36, 52] (batch_size, ch_out, nodes, time)
 
             # N, C, V, T = X.shape
             # X = X.permute(0,2,1,3).reshape(N*V, C*T)
             # In: (batch_size * nodes, ch_out * time), Out: (batch_size * nodes, 256)
+
+
             Z = torch.squeeze(self.fc(X.permute(0,3,1,2)))
             # In: (batch_size * nodes, 256) Out: (batch_size, 256, nodes)
             # Z = Z.view(N, V, -1)
@@ -433,7 +450,6 @@ class TemporalInfoGraph(nn.Module):
             # global pooling
             # Z = torch.squeeze(F.avg_pool2d(X, (1, X.shape[-1])), dim=-1)
             # X = x.view(N, M, -1, 1, 1).mean(dim=1)
-
 
         if self.discriminator_layer:
             avgZ = self.readout(Z.permute(0,2,1).reshape(-1, Z.shape[2])).view(Z.shape[0], -1)
@@ -443,10 +459,14 @@ class TemporalInfoGraph(nn.Module):
         else:
             # In: (batch_size, ch_out, nodes) Out: (batch_size, ch_out)
             # Stack nodes on top of each other, i.e concat all nodes per graph
-            # global_Z = self.readout(Z.permute(0,2,1).reshape(-1, Z.shape[2])).view(Z.shape[0], -1)
+            # global_Z = self.readout(Z.reshape(Z.shape[0], -1))#.view(Z.shape[0], -1)
             # local_Z = Z
+            # Z = torch.squeeze(torch.cat(concat_local, 1))
+            # Z = self.emb_bn(Z)
+            Z = F.tanh(Z)
 
             global_Z = torch.squeeze(F.avg_pool2d(Z, (1, Z.shape[-1])), dim=-1)
+            # global_Z = self.readout(Z.reshape(Z.shape[0], -1))#.view(Z.shape[0], -1)
             # self.readout(Z.view(N, -1))#.view(Z.shape[0], -1)
             local_Z = Z#.permute(0, 2, 1)
 

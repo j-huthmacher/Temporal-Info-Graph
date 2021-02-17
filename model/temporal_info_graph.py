@@ -14,7 +14,7 @@ from data.data_utils import get_normalized_adj, pad_zero_mask, pad_zero_idx
 class ConstZeroLayer(torch.nn.Module):
 
     def forward(self, x):
-        return 0
+        return torch.tensor([0])
 
 class FF(nn.Module):
     """
@@ -130,15 +130,15 @@ class TemporalConvolution(nn.Module):
 
         N, C, V, T = X.shape
 
-        pad_idx = pad_zero_idx(X.permute(0,3,2,1))
+        # pad_idx = pad_zero_idx(X.permute(0,3,2,1))
 
         #### Transform the Data and apply 1D conv ####
         X = X.permute(0, 2, 1, 3).reshape(N * V, C, T)  # ()
         X = self.conv(X)  # Expects: (batch, features, times, nodes)
         X = X.view(N, V, X.shape[1], -1).permute(0, 2, 1, 3)
 
-        pad_mask = pad_zero_mask(X.permute(0,3,2,1).shape, pad_idx)
-        X.permute(0,3,2,1)[pad_mask] = 0
+        # pad_mask = pad_zero_mask(X.permute(0,3,2,1).shape, pad_idx)
+        # X.permute(0,3,2,1)[pad_mask] = 0
 
         if not self.debug:
             # X = self.bn2(X)
@@ -323,8 +323,8 @@ class TemporalInfoGraph(nn.Module):
                 c_in, c_out, spec_out, out, kernel = layer
                 tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out,
                                                 kernel=kernel, dropout=dropout)
-                specConv = nn.Sequential(SpectralConvolution(c_in=c_out, c_out=spec_out, A=self.A),
-                                         SpectralConvolution(c_in=spec_out, c_out=spec_out, A=self.A))
+                specConv = nn.Sequential(SpectralConvolution(c_in=c_out, c_out=spec_out, A=self.A))
+                                        #  SpectralConvolution(c_in=spec_out, c_out=spec_out, A=self.A))
                 # specConv = nn.Identity()
                 tempConv2 = TemporalConvolution(c_in=spec_out, c_out=out, kernel=kernel, dropout=dropout)
             else:
@@ -379,7 +379,8 @@ class TemporalInfoGraph(nn.Module):
 
         #### Fully Connected Layer ####
         if self.diff_scales:
-            self.concat_readout = nn.Sequential(nn.Linear(self.concat_dim, self.embedding_dim))
+            self.concat_readout = nn.Conv1d(self.concat_dim, self.embedding_dim, kernel_size=1)
+            self.out_dim = self.concat_dim
 
         self.fc = nn.Conv2d(self.out_dim, 1, kernel_size=1)
 
@@ -436,13 +437,13 @@ class TemporalInfoGraph(nn.Module):
             # Expected layer = [(resLayer), tempConv1, specConv, tempConv2, activation]
             tempConv1, specConv, tempConv2, activation = layer[-4], layer[-3], layer[-2], layer[-1]
 
-            res = resLayer(X)
+            res = resLayer(X).to(self.device)
 
             # X = self.specConvIn(X, self.A)
             X = tempConv1(X)  # (batch_size, ch_out, nodes, time)
             # X = self.specConvOut(X, self.A)
-            X = specConv[0](X, self.A * e_weight) # (batch_size, ch_out, nodes, time)
-            X = specConv[1](X, self.A * e_weight) # (batch_size, ch_out, nodes, time)
+            for spec in specConv:
+                X = spec(X, self.A * e_weight) # (batch_size, ch_out, nodes, time)
             # X = specConv[2](X, self.A * e_weight) # (batch_size, ch_out, nodes, time)
             X = tempConv2(X)  # (batch_size, ch_out, nodes, time)
             X = bn(X)  # stabilize the inputs to nonlinear activation functions.
@@ -454,11 +455,14 @@ class TemporalInfoGraph(nn.Module):
                 concat_local.append(F.avg_pool2d(X, (1, X.shape[-1])))
 
         if self.diff_scales:
-            Z = torch.squeeze(torch.cat(concat_local, 1))
+            Z = self.concat_readout(torch.squeeze(torch.cat(concat_local, 1)))
         else:
-            #### Fully Connected Layer ####
+            ### Fully Connected Layer ####
             # In: (batch_size, time, ch_out, nodes), Out: (batch_size, 1, ch_out, nodes))
             Z = torch.squeeze(self.fc(X.permute(0,3,1,2)))
+
+            # (batch_size, ch_out, nodes, time)	        # (batch_size, ch_out, nodes, time)
+            # Z = X.mean(dim=3)
 
             # Alternatively one can pool over the time dimension, e.g. by averaging.
             # Z = torch.squeeze(F.avg_pool2d(X, (1, X.shape[-1])), dim=-1)

@@ -4,9 +4,33 @@
 """
 from typing import Any
 
+import torch
 import numpy as np
 
 # from data.tig_data_set import TIGDataset
+
+def last_non_zero(x: torch.Tensor):
+    """ Determines the index of the last non zero frame.
+
+        Parameter:
+            x: torch.Tensor
+                Input of which the last non zero frame should be determined.
+                Dimension: (batch_size, frames, nodes, features)
+        Returns:
+            torch.Tensor: Returns a 1D tensor containing the index of the last
+            non zero frame for each sample in the batch. Dimension: (batch_size, 1)
+    """
+    # Mask is true where all coordinates (i.e. the complete frame) are non zero
+    mask = (x.view(*x.shape[:2], -1) != 0).all(dim=2)
+    # Returns per row the first index of non zero values starting from the last
+    # I.e. 2 means [-2:] are zero
+    mask.sum(dim=1)
+
+    idx_mask = torch.range(0, mask.shape[1] - 1).repeat(mask.shape[0], 1)
+    # Idx contains the index of the last non zero frame
+    idx = torch.where(mask, idx_mask.type(torch.FloatTensor), torch.tensor([-1.])).max(dim=1)[0]
+
+    return idx
 
 
 def get_normalized_adj(A):

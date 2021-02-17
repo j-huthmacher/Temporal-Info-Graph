@@ -9,8 +9,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from data.data_utils import get_normalized_adj
+from data.data_utils import get_normalized_adj, pad_zero_mask, pad_zero_idx
 
+class ConstZeroLayer(torch.nn.Module):
+
+    def forward(self, x):
+        return 0
 
 class FF(nn.Module):
     """
@@ -79,9 +83,9 @@ class TemporalConvolution(nn.Module):
             padding = 0
 
         self.conv = nn.Conv1d(self.c_in,
-                                self.c_out,
-                                kernel_size=self.kernel[1],
-                                padding=padding)
+                              self.c_out,
+                              kernel_size=self.kernel[1],
+                              padding=padding)
 
         if weights is not None:
             self.conv.weight = torch.nn.Parameter(self.weights)
@@ -125,10 +129,16 @@ class TemporalConvolution(nn.Module):
                 X = self.bn1(X)
 
         N, C, V, T = X.shape
+
+        pad_idx = pad_zero_idx(X.permute(0,3,2,1))
+
         #### Transform the Data and apply 1D conv ####
         X = X.permute(0, 2, 1, 3).reshape(N * V, C, T)  # ()
         X = self.conv(X)  # Expects: (batch, features, times, nodes)
         X = X.view(N, V, X.shape[1], -1).permute(0, 2, 1, 3)
+
+        pad_mask = pad_zero_mask(X.permute(0,3,2,1).shape, pad_idx)
+        X.permute(0,3,2,1)[pad_mask] = 0
 
         if not self.debug:
             # X = self.bn2(X)
@@ -304,6 +314,7 @@ class TemporalInfoGraph(nn.Module):
         # self.specConvOut = SpectralConvolution(c_in=64, c_out=64)
 
         self.layers = []
+        self.res_layers = []
         self.batch_norms = []
         self.concat_dim = 0
 
@@ -322,6 +333,8 @@ class TemporalInfoGraph(nn.Module):
                 # specConv = SpectralConvolution(c_in=c_out, c_out=out)#, weights=self.spectral_weights)
                 specConv = nn.Identity()
                 tempConv2 = nn.Identity()
+            
+            self.layers.append(nn.Sequential(tempConv1, specConv, tempConv2, nn.LeakyReLU()))
 
             #### Residual Layer ####
             if (c_in != out) and residual:
@@ -329,14 +342,9 @@ class TemporalInfoGraph(nn.Module):
                 residual = nn.Sequential(nn.Conv2d(c_in, out, kernel_size=res_kernel),
                                          nn.BatchNorm2d(out))
                 # residual = nn.Identity() # Feed the raw input to the end
-                self.layers.append(nn.Sequential(residual,
-                                                 tempConv1,
-                                                 specConv,
-                                                 tempConv2,
-                                                 nn.LeakyReLU()))
+                self.res_layers.append(residual)
             else:
-                # Build up sandwich architecture
-                self.layers.append(nn.Sequential(tempConv1, specConv, tempConv2, nn.LeakyReLU()))
+                self.res_layers.append(ConstZeroLayer())
 
             #### Edge Paramter ####
             if A is not None:
@@ -355,6 +363,7 @@ class TemporalInfoGraph(nn.Module):
 
         self.batch_norms = nn.Sequential(*self.batch_norms)
         self.convLayers = nn.Sequential(*self.layers)
+        self.res_layers = nn.Sequential(*self.res_layers)
 
         #### Determine Output Dimension ####
         with torch.no_grad():
@@ -377,7 +386,7 @@ class TemporalInfoGraph(nn.Module):
 
         #### Global Readout ####
         self.readout = nn.Sequential(nn.Linear(36*256, 256))
-        
+
         # self.readout = nn.Sequential(nn.Linear(self.emb_dim * 36, self.emb_dim))
         # self.readout = nn.Identity() #nn.Sequential(nn.Linear(256 * 36, 256))
 
@@ -424,15 +433,11 @@ class TemporalInfoGraph(nn.Module):
 
         concat_local = []
 
-        for layer, e_weight, bn in zip(self.convLayers, self.edge_weights, self.batch_norms):
+        for layer, e_weight, bn, resLayer in zip(self.convLayers, self.edge_weights, self.batch_norms, self.res_layers):
             # Expected layer = [(resLayer), tempConv1, specConv, tempConv2, activation]
             tempConv1, specConv, tempConv2, activation = layer[-4], layer[-3], layer[-2], layer[-1]
 
-            if len(layer) == 5:
-                resLayer = layer[0]
-                res = resLayer(X)
-            else:
-                res = 0
+            res = resLayer(X)
 
             # X = self.specConvIn(X, self.A)
             X = tempConv1(X)  # (batch_size, ch_out, nodes, time)

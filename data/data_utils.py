@@ -9,7 +9,7 @@ import numpy as np
 
 # from data.tig_data_set import TIGDataset
 
-def last_non_zero(x: torch.Tensor):
+def pad_zero_idx(x: torch.Tensor, device="cuda"):
     """ Determines the index of the last non zero frame.
 
         Parameter:
@@ -17,20 +17,33 @@ def last_non_zero(x: torch.Tensor):
                 Input of which the last non zero frame should be determined.
                 Dimension: (batch_size, frames, nodes, features)
         Returns:
-            torch.Tensor: Returns a 1D tensor containing the index of the last
-            non zero frame for each sample in the batch. Dimension: (batch_size, 1)
+            torch.Tensor: Returns final mask where all values that padded zeros
+            are replaced by True and all remaining are False.
+            Dimension: (batch_size, 1)
     """
     # Mask is true where all coordinates (i.e. the complete frame) are non zero
-    mask = (x.view(*x.shape[:2], -1) != 0).all(dim=2)
+    mask = (x.reshape(*x.shape[:2], -1) != 0).all(dim=2).to(device)
+    # x = x.reshape(*shape)
     # Returns per row the first index of non zero values starting from the last
     # I.e. 2 means [-2:] are zero
     mask.sum(dim=1)
 
-    idx_mask = torch.range(0, mask.shape[1] - 1).repeat(mask.shape[0], 1)
+    idx_mask = torch.arange(0, mask.shape[1]).repeat(mask.shape[0], 1).to(device)
     # Idx contains the index of the last non zero frame
-    idx = torch.where(mask, idx_mask.type(torch.FloatTensor), torch.tensor([-1.])).max(dim=1)[0]
+    idx = torch.where(mask, idx_mask.type(torch.FloatTensor).to(device), torch.tensor([-1.]).to(device)).max(dim=1)[0]
+    return idx - (mask.shape[1])
 
-    return idx
+def pad_zero_mask(shape : torch.Tensor, idx: torch.Tensor, device="cuda"):
+    """
+    """
+    idx_mask = torch.arange(0, shape[1]).repeat(shape[0], 1).to(device)
+    # Create matrix containg the max index with same shape as input
+    idx = shape[1] + idx
+    max_idx = idx.repeat_interleave(shape[1], dim=0).view(-1, shape[1]).to(device)
+
+    final_mask = idx_mask > max_idx
+
+    return final_mask
 
 
 def get_normalized_adj(A):

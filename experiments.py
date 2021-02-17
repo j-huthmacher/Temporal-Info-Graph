@@ -116,7 +116,7 @@ def experiment(tracker: Tracker, config: dict):
             loader = [train_loader, val_loader]
         
         encoder = None
-        if not "encoder" in config or not isinstance(config["classifier"], dict):
+        if  "encoder" in config and bool(config["encoder"]):
             #### TIG Set Up ####
             # TODO: Test LSTM model
             tig = TemporalInfoGraph(**config["encoder"], A=data.A)#.cuda()
@@ -125,7 +125,7 @@ def experiment(tracker: Tracker, config: dict):
             # tig = TemporalInfoGraphLSTM(A=data.A)
 
             if "print_summary" in config and config["print_summary"]:
-                summary(tig.to("cpu"), input_size=(2, self.A.shape[0], 300), batch_size=config["loader"]["batch_size"])
+                summary(tig.to("cpu"), input_size=(2, data.A.shape[0], 300), batch_size=config["loader"]["batch_size"])
 
             tig = tig.to("cuda")
 

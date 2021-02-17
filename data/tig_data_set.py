@@ -82,7 +82,7 @@ class TIGDataset(Dataset):
                 # Download and extract data if not exists.
                 self.load_data()
             if "stgcn" in name:
-                self.A = KINECT_ADJACENCY[:18, :18]
+                self.A = KINECT_ADJACENCY#[:18, :18]
             elif "ntu" in name:
                 self.A = NTU_ADJACENCY
             else:
@@ -93,6 +93,10 @@ class TIGDataset(Dataset):
             self.label_info = np.load(path, allow_pickle=True, mmap_mode="r")["labels"]
         except:
             pass
+    
+    def to_tensor(self):
+        self.x = torch.tensor(self.x)
+        self.y = torch.tensor(self.y)
 
     def load_ntu_rgb_d_local(self):
         """
@@ -274,8 +278,8 @@ class TIGDataset(Dataset):
 
         log.info(f"Load data...")
         data = np.load(self.path + self.file_name, allow_pickle=True, mmap_mode="r")
-        self.x = data["x"]
-        self.y = data["y"]
+        self.x = np.asarray(list(data["x"]))
+        self.y = np.asarray(list(data["y"]))
         with open(self.path + 'kinetics_class_dict.json', "rb") as f:
             self.classes = json.load(f)
 

@@ -118,11 +118,13 @@ def experiment(tracker: Tracker, config: dict):
         #### TIG Set Up ####
         # TODO: Test LSTM model
         tig = TemporalInfoGraph(**config["encoder"], A=data.A)#.cuda()
+
+        # torch.backends.cudnn.enabled = False
         # tig = TemporalInfoGraphLSTM(A=data.A)
 
         if "print_summary" in config and config["print_summary"]:
-            summary(tig.to("cpu"), input_size=(2, 36, 300), batch_size=config["loader"]["batch_size"])
-        
+            summary(tig.to("cpu"), input_size=(2, self.A.shape[0], 300), batch_size=config["loader"]["batch_size"])
+
         tig = tig.to("cuda")
 
         loss_fn = jensen_shannon_mi
@@ -167,9 +169,12 @@ def experiment(tracker: Tracker, config: dict):
         if not "classifier" in config or not isinstance(config["classifier"], dict):
             # If the experiment only trains the encoder
             return
+        
+        tig = tig.to("cpu")
 
         #### MLP Set Up ####
         tracker.tag = "MLP."
+        config["classifier"]["in_dim"] = tig.out_dim
         num_classes = (config["classifier"]["num_classes"]
                        if "num_classes" in config["classifier"]
                        else int(np.max(data.y) + 1))

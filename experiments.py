@@ -114,73 +114,77 @@ def experiment(tracker: Tracker, config: dict):
             loader = [train_loader, train_loader]
         else:
             loader = [train_loader, val_loader]
+        
+        encoder = None
+        if not "encoder" in config or not isinstance(config["classifier"], dict):
+            #### TIG Set Up ####
+            # TODO: Test LSTM model
+            tig = TemporalInfoGraph(**config["encoder"], A=data.A)#.cuda()
 
-        #### TIG Set Up ####
-        # TODO: Test LSTM model
-        tig = TemporalInfoGraph(**config["encoder"], A=data.A)#.cuda()
+            # torch.backends.cudnn.enabled = False
+            # tig = TemporalInfoGraphLSTM(A=data.A)
 
-        # torch.backends.cudnn.enabled = False
-        # tig = TemporalInfoGraphLSTM(A=data.A)
+            if "print_summary" in config and config["print_summary"]:
+                summary(tig.to("cpu"), input_size=(2, self.A.shape[0], 300), batch_size=config["loader"]["batch_size"])
 
-        if "print_summary" in config and config["print_summary"]:
-            summary(tig.to("cpu"), input_size=(2, self.A.shape[0], 300), batch_size=config["loader"]["batch_size"])
+            tig = tig.to("cuda")
 
-        tig = tig.to("cuda")
+            loss_fn = jensen_shannon_mi
+            if "loss" in config and config["loss"] == "bce":
+                loss_fn = bce_loss
+            # loss_fn = hypersphere_loss
 
-        loss_fn = jensen_shannon_mi
-        if "loss" in config and config["loss"] == "bce":
-            loss_fn = bce_loss
-        # loss_fn = hypersphere_loss
+            solver = Solver(tig, loader, loss_fn)
 
-        solver = Solver(tig, loader, loss_fn)
+            #### Tracking ####
+            tracker.track_traning(solver.train)(config["encoder_training"])
+            encoder = solver.model
 
-        #### Tracking ####
-        tracker.track_traning(solver.train)(config["encoder_training"])
+            if "emb_tracking" in config and config["emb_tracking"] != False:
+                # Track the final embeddings after the TIG encoder is trained.
+                emb_x = np.array([])
+                emb_y = np.array([])
+                with torch.no_grad():
+                    for batch_x, batch_y in train_loader:
+                        #TODO: multiple Persons
+                        batch_x = batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1)
+                        # batch_x = batch_x.permute(0,2,1,3).reshape(-1, 18, 2, 300).permute(0,2,1,3)
+                    
+                        pred, _ = solver.model(batch_x)
+                        if emb_x.size:
+                            emb_x = np.concatenate(
+                                [emb_x, pred.detach().cpu().numpy()])
+                        else:
+                            emb_x = pred.detach().cpu().numpy()
 
-        if "emb_tracking" in config and config["emb_tracking"] != False:
-            # Track the final embeddings after the TIG encoder is trained.
-            emb_x = np.array([])
-            emb_y = np.array([])
-            with torch.no_grad():
-                for batch_x, batch_y in train_loader:
-                    #TODO: multiple Persons
-                    batch_x = batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1)
-                    # batch_x = batch_x.permute(0,2,1,3).reshape(-1, 18, 2, 300).permute(0,2,1,3)
-                
-                    pred, _ = solver.model(batch_x)
-                    if emb_x.size:
-                        emb_x = np.concatenate(
-                            [emb_x, pred.detach().cpu().numpy()])
-                    else:
-                        emb_x = pred.detach().cpu().numpy()
+                        if emb_y.size:
+                            emb_y = np.concatenate([emb_y, batch_y.repeat(2).numpy()])
+                        else:
+                            emb_y = batch_y.repeat(2).numpy()
 
-                    if emb_y.size:
-                        emb_y = np.concatenate([emb_y, batch_y.repeat(2).numpy()])
-                    else:
-                        emb_y = batch_y.repeat(2).numpy()
+                    buffer = io.BytesIO()
+                    np.savez(buffer, x=emb_x, y=emb_y)
+                    tracker.add_artifact(buffer.getvalue(), name="embeddings.npz")
 
-                buffer = io.BytesIO()
-                np.savez(buffer, x=emb_x, y=emb_y)
-                tracker.add_artifact(buffer.getvalue(), name="embeddings.npz")
-
-                #### Local Embedding Tracking ####
-                np.savez(tracker.local_path+"embeddings", x=emb_x, y=emb_y)
+                    #### Local Embedding Tracking ####
+                    np.savez(tracker.local_path+"embeddings", x=emb_x, y=emb_y)
 
         if not "classifier" in config or not isinstance(config["classifier"], dict):
             # If the experiment only trains the encoder
             return
-        
-        tig = tig.to("cpu")
+
+        if encoder is None:
+            encoder = torch.load(tracker.local_path + "TIG_.pt")
 
         #### MLP Set Up ####
         tracker.tag = "MLP."
-        config["classifier"]["in_dim"] = tig.out_dim
+        config["classifier"]["in_dim"] = encoder.embedding_dim
         num_classes = (config["classifier"]["num_classes"]
                        if "num_classes" in config["classifier"]
                        else int(np.max(data.y) + 1))
         classifier = MLP(num_class=num_classes, encoder=None,
                          **config["classifier"]).cuda()
-        encoder = solver.model
+       
 
         solver = Solver(classifier, loader, loss_fn=nn.CrossEntropyLoss())
         tracker.track_traning(solver.train)(config["classifier_training"], encoder=encoder)

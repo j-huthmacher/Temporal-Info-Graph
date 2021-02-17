@@ -379,13 +379,12 @@ class TemporalInfoGraph(nn.Module):
 
         #### Fully Connected Layer ####
         if self.diff_scales:
-            self.concat_readout = nn.Sequential(nn.Linear(self.concat_dim, 256))
-            self.out_dim = self.concat_dim
+            self.concat_readout = nn.Sequential(nn.Linear(self.concat_dim, self.embedding_dim))
 
         self.fc = nn.Conv2d(self.out_dim, 1, kernel_size=1)
 
         #### Global Readout ####
-        self.readout = nn.Sequential(nn.Linear(36*256, 256))
+        self.readout = nn.Sequential(nn.Linear(36*256, self.embedding_dim))
 
         # self.readout = nn.Sequential(nn.Linear(self.emb_dim * 36, self.emb_dim))
         # self.readout = nn.Identity() #nn.Sequential(nn.Linear(256 * 36, 256))

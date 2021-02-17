@@ -54,20 +54,19 @@ class TIGDataset(Dataset):
         self.x = []
         self.y = []
 
-        if name == "stgcn":
-            self.load_stgcn_data()
-            if split_persons:
-                self.A = KINECT_ADJACENCY[:18, :18]
-            else:
-                self.A = KINECT_ADJACENCY
-
-        elif name == "stgcn_local" or name == "stgcn_2080":
-            self.load_stgcn_local()
-            if split_persons:
-                self.A = KINECT_ADJACENCY[:18, :18]
-            else:
-                self.A = KINECT_ADJACENCY
-        elif name == "ntu_rgb_d_local":
+        # if name == "stgcn":
+        #     self.load_stgcn_data()
+        #     if split_persons:
+        #         self.A = KINECT_ADJACENCY[:18, :18]
+        #     else:
+        #         self.A = KINECT_ADJACENCY
+        # elif name == "stgcn_local" or name == "stgcn_2080":
+        #     self.load_stgcn_local()
+        #     if split_persons:
+        #         self.A = KINECT_ADJACENCY[:18, :18]
+        #     else:
+        #         self.A = KINECT_ADJACENCY
+        if name == "ntu_rgb_d_local":
             self.load_ntu_rgb_d_local()
             self.A = NTU_ADJACENCY
         else:
@@ -82,6 +81,11 @@ class TIGDataset(Dataset):
             else:
                 # Download and extract data if not exists.
                 self.load_data()
+            if "stgcn" in name:
+                self.A = KINECT_ADJACENCY[:18, :18]
+            elif "ntu" in name:
+                self.A = NTU_ADJACENCY
+            else:
                 self.A = KINECT_ADJACENCY
 
         try:

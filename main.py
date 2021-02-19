@@ -41,6 +41,9 @@ parser.add_argument('--disable_local_store', dest='disable_local_store', action=
 #### Data CLI ####
 parser.add_argument('--prep_data', dest='prep_data', action="store_true",
                     help='Prepare data.')
+#### Baseline ####
+parser.add_argument('--baseline', dest='baseline', action="store_true",
+                    help='Execute baseline')
 
 # parser.add_argument('--type', dest='type', action="str",
 #                     help='Prepare data.')
@@ -185,3 +188,27 @@ elif args.prep_data:
                    verbose=True, process_label=True)
 
     log.info("Data set processed")
+
+elif args.baseline:
+    from data.tig_data_set import TIGDataset
+    from torch.utils.data import DataLoader
+
+    from baseline import train_baseline
+
+    import numpy as np
+
+    log.info("Full run")
+    data = TIGDataset(name="stgcn", path="../content/")
+    data.x = data.x.reshape(data.x.shape[0], -1)
+
+    log.info("Split Full Data")
+    train, val = data.split()
+
+    log.info("New data shape", np.array(list(np.array(train)[:,0])).shape)
+
+    train_loader = DataLoader(train, batch_size=16, shuffle=True)
+    val_loader = DataLoader(val, batch_size=16, shuffle=True)
+
+    log.info(len(train_loader.dataset), len(val_loader.dataset))
+
+    train_baseline(data=(train_loader, val_loader), num_epochs=10)

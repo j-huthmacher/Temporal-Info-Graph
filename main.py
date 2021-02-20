@@ -10,8 +10,10 @@ import sys
 
 import argparse
 import torch
+from torch.utils.data import DataLoader
 import yaml
 from datetime import datetime
+import numpy as np
 
 #pylint: disable=import-error
 from tracker import Tracker
@@ -19,6 +21,8 @@ from experiments import  experiment
 from config.config import log
 from data.tig_data_set import TIGDataset
 from experiments import Experiment
+from baseline import train_baseline
+
 
 #### Set Up CLI ####
 parser = argparse.ArgumentParser(prog='tig', description='Temporal Info Graph')
@@ -44,6 +48,8 @@ parser.add_argument('--prep_data', dest='prep_data', action="store_true",
 #### Baseline ####
 parser.add_argument('--baseline', dest='baseline', action="store_true",
                     help='Execute baseline')
+parser.add_argument('--data', dest='data', default="remote",
+                    help='Name of the data set that should be used.')
 
 # parser.add_argument('--type', dest='type', action="str",
 #                     help='Prepare data.')
@@ -98,7 +104,7 @@ if args.train:
     torch.manual_seed(0)
     config["seed"] = 0
 
-    #### Handler ####
+    #### Handler to Captue Crtl+C (Doesn't work) ####
     def signal_handler(sig, frame):
         tracker.cfg["status"] = "Failed (Exception)"
         tracker.cfg["end_time"] = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
@@ -190,25 +196,13 @@ elif args.prep_data:
     log.info("Data set processed")
 
 elif args.baseline:
-    from data.tig_data_set import TIGDataset
-    from torch.utils.data import DataLoader
-
-    from baseline import train_baseline
-
-    import numpy as np
-
-    log.info("Full run")
-    data = TIGDataset(name="stgcn", path="../content/")
+    log.info(f"Run baseline on {args.data}")
+    data = TIGDataset(name=args.data, path="../content/")
     data.x = data.x.reshape(data.x.shape[0], -1)
-
-    log.info("Split Full Data")
     train, val = data.split()
-
-    log.info("New data shape", np.array(list(np.array(train)[:,0])).shape)
 
     train_loader = DataLoader(train, batch_size=16, shuffle=True)
     val_loader = DataLoader(val, batch_size=16, shuffle=True)
 
-    log.info(len(train_loader.dataset), len(val_loader.dataset))
-
+    log.info("Start baseline training (Default SVM).")
     train_baseline(data=(train_loader, val_loader), num_epochs=10)

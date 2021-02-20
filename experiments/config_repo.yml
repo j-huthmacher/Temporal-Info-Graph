@@ -89,6 +89,7 @@ standard_stratified2:
   visuals: ["classification", "memory", "loss", "metric"]
 
 complex_encoder:
+  name: 5classes_2spec_dif_scales
   data:
     name: kinetic_skeleton_5000
     path: ./content/
@@ -97,25 +98,25 @@ complex_encoder:
     batch_size: 256
     shuffle: True
   stratify: 
-    num: 2
-    lim: 100
+    num: 10
+    lim: 5000
   emb_tracking: 10
+  loss: bce
   print_summary: True
   encoder: 
     # [(c_in, c_out, spec_out, out, kernel)]
     architecture: [
-      [2, 32, 64, 64, 16],
-      [64, 64, 64, 64, 16],
-      [64, 64, 64, 64, 16],
-      [64, 64, 128, 128, 16],
-      [128, 128, 256, 256, 16],
-      [256, 256, 256, 256, 16],
-      [256, 256, 256, 256, 16]
+      [2, 32, 64, 64, 22],
+      [64, 64, 64, 64, 22],
+      [64, 64, 64, 64, 22],
+      [64, 64, 128, 128, 22],
+      [128, 128, 256, 256, 22],
+      [256, 256, 256, 256, 22],
+      [256, 256, 256, 256, 22]
    ]
-   out_dim: 90
-   residual: True,
-   discriminator_layer: False,
-   dropout': 0
+    residual: True
+    discriminator_layer: False
+    dropout': 0
   encoder_training:
     verbose: True
     n_epochs: 2000
@@ -135,7 +136,9 @@ complex_encoder:
     gradient_clipping: 0.2
   
 small_complex_encoder:
-  name: stgcn_fully_connected_layer
+  name: fcn_1spec_1000epochs_MLP_LR_0_001_diff_scales
+  # tracking:
+  #   local_path: ./output/17022021_1838_debug_small_complex_encoder_fcn_1spec_diff_scale/
   data:
     name: stgcn_2080
     path: ./content/
@@ -147,34 +150,35 @@ small_complex_encoder:
     num: 2
     lim: 100
   emb_tracking: 10
-  loss: jsd
+  loss: bce
   encoder:
     architecture: [
       [2, 64, 64, 64, 37],
       [64, 64, 64, 64, 37],
       [64, 64, 64, 64, 37],
-      [64, 64, 64, 64, 37]
-   ]
+      [64, 64, 64, 64, 37]]
     residual: True
     # edge_weights: True
     discriminator_layer: False
     dropout: 0
+    diff_scales: True
   encoder_training:
     verbose: True
-    n_epochs: 200
+    n_epochs: 1000
     optimizer_name: Adam
     optimizer:
       lr: 0.01
-    gradient_clipping: 0.5
+      # weight_decay: 0.001
+    # gradient_clipping: 0.5
   classifier: 
-    in_dim: 64
-    hidden_layers: [128, 256, 256]
+    in_dim: 256
+    hidden_layers: [128, 256, 256] #[256, 512, 256]
   classifier_training:
     verbose: True
-    n_epochs: 50
+    n_epochs: 100
     optimizer_name: Adam
     optimizer:
-      lr: 0.01
+      lr: 0.001
     gradient_clipping: 0.5
 
 evaluate_experiment:

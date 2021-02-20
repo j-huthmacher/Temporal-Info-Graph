@@ -224,20 +224,22 @@ class TIGDataset(Dataset):
             If the data doesn't exist the data is downloaded and extracted.
         """
         if not exists(self.path + self.file_name):
-            if not exists(self.path + self.name + ".rar"):
+            if not exists(self.path + self.name + ".zip"):
                 #### Download ####
                 url = f'http://85.215.86.232/tig/data/{self.name}.zip'
                 r = requests.get(url, allow_redirects=True, stream=True)
 
-                pbar = tqdm(unit="B", total=int(
-                    r.headers['Content-Length']) // 10**6, desc=f'Download {self.name} ')
                 chunkSize = 1024
-
+                pbar = tqdm(r.iter_content(chunk_size=chunkSize), unit="B",
+                            total=int(r.headers['Content-Length']),
+                            desc=f'Download {self.name}',
+                            unit_scale=True, unit_divisor=1024)
+                
                 Path(self.path).mkdir(parents=True, exist_ok=True)
                 with open(self.path + self.name + ".zip", 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=chunkSize):
+                    for chunk in pbar:
                         if chunk:  # filter out keep-alive new chunks
-                            pbar.update(len(chunk) // 10**6)
+                            pbar.update(len(chunk))
                             f.write(chunk)
                 log.info(
                     f"Data set donwloaded! ({self.path + self.name + '.zip'})")

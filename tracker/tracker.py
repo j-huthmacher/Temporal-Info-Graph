@@ -25,7 +25,8 @@ from sacred.observers import MongoObserver
 
 # pylint: disable=import-error
 from model.loss import bce_loss
-from model import MLP, TemporalInfoGraph
+from model import TemporalInfoGraph, TemporalInfoGraphLSTM
+from baseline import MLP
 from model import get_negative_expectation as neg_exp
 from model import get_positive_expectation as pos_exp
 from config.config import log, formatter, logging
@@ -661,7 +662,7 @@ class Tracker(object):
                 name = "TIG.loss"
                 self.save_plot(fig, path, name)
 
-        if isinstance(self.solver.model, TemporalInfoGraph):
+        if isinstance(self.solver.model, TemporalInfoGraph) or isinstance(self.solver.model, TemporalInfoGraphLSTM):
             #### Track Intermediate Embeddings ####
             if ("emb_tracking" in self.cfg and type(self.cfg["emb_tracking"]) == int and
                 self.solver.epoch % self.cfg["emb_tracking"] == 0):
@@ -915,9 +916,12 @@ class Tracker(object):
                         self.solver.metric[0])
                 np.save(f'{self.local_path}/TIG_{self.tag}top5.npy',
                         self.solver.metric[1])
-
-            torch.save(
-                self.model, f'{self.local_path}/TIG_{self.tag.replace(".", "")}.pt')
+            
+            try:
+                torch.save(
+                    self.model, f'{self.local_path}/TIG_{self.tag.replace(".", "")}.pt')
+            except:
+                pass
             log.info(f"Experiment stored at '{self.local_path}")
 
     def track_checkpoint(self):

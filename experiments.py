@@ -36,7 +36,8 @@ import sacred
 from config.config import log, create_logger
 from data import KINECT_ADJACENCY
 from data.tig_data_set import TIGDataset
-from model import MLP, Solver, TemporalInfoGraph, TemporalInfoGraphLSTM
+from model import Solver, TemporalInfoGraph, TemporalInfoGraphLSTM
+from baseline import MLP
 from model.loss import jensen_shannon_mi, bce_loss, hypersphere_loss
 from tracker import Tracker
 from evaluation import svc_classify, mlp_classify, randomforest_classify

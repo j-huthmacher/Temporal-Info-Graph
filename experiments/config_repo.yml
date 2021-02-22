@@ -89,18 +89,17 @@ standard_stratified2:
   visuals: ["classification", "memory", "loss", "metric"]
 
 complex_encoder:
-  name: 5classes_2spec_dif_scales
+  name: 50classes
+  tracking:
+    which: ["epoch"]
+    emb_tracking: True
   data:
-    name: kinetic_skeleton_5000
+    name: stgcn_50_classes
     path: ./content/
     verbose: True
   loader: 
     batch_size: 256
     shuffle: True
-  stratify: 
-    num: 10
-    lim: 5000
-  emb_tracking: 10
   loss: bce
   print_summary: True
   encoder: 
@@ -116,7 +115,7 @@ complex_encoder:
    ]
     residual: True
     discriminator_layer: False
-    dropout': 0
+    dropout: 0
   encoder_training:
     verbose: True
     n_epochs: 2000

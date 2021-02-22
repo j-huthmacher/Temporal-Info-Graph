@@ -54,7 +54,8 @@ class Tracker(object):
     """
 
     def __init__(self, ex_name: str = None, sacred_cfg: dict = {}, config: dict = {},
-                 local: bool = True, local_path: str = None, track_decision: bool = False):
+                 local: bool = True, local_path: str = None, track_decision: bool = False,
+                 which: list = None, emb_tracking: Any = None, visuals: list = None):
         """ Initialization of the tracker.
 
             Paramter:
@@ -94,6 +95,9 @@ class Tracker(object):
         #### Make tracker obj globally available ####
         global tracker
         tracker = self
+        self.which = which
+        self.emb_tracking = emb_tracking
+        self.visuals = visuals
 
         if (self.sacred_cfg is not None and
             self.sacred_cfg["ex_name"] is not None and
@@ -236,22 +240,22 @@ class Tracker(object):
             if self.local:
                 self.track_locally()
 
-        elif mode == "epoch":
+        elif mode == "epoch" and (mode in self.which or self.which is None):
             self.track_epoch()
-        elif mode == "training":
+        elif mode == "training" and (mode in self.which or self.which is None):
             self.track_train()  # Not used yet!
-        elif mode == "validation":
+        elif mode == "validation" and (mode in self.which or self.which is None):
             self.track_validation()  # Not used yet!
-        elif mode == "evaluation":
+        elif mode == "evaluation" and (mode in self.which or self.which is None):
             self.track_evaluation()  # Not used yet!
-        elif mode == "train_step":
+        elif mode == "train_step" and (mode in self.which or self.which is None):
             self.track_train_step()
 
     #### (Individual) Tracker Functions #####
     def track_train_step(self):
         """ Function to track the loss calculation.
         """
-        if  "visuals" in self.cfg and "memory" in self.cfg["visuals"]:
+        if  "memory" in self.visuals:
             #### Check Memory Consumption ####
             mem = psutil.virtual_memory()
             mem_used.append(mem.used/1024**3)
@@ -342,7 +346,7 @@ class Tracker(object):
             except:
                 pass
 
-            if  "visuals" in self.cfg and "discriminator" in self.cfg["visuals"]:
+            if "discriminator" in self.visuals:
                 f = Path(f"{self.local_path}loss.stats.expectations.csv")
                 if not f.is_file():
                     f = open(f"{self.local_path}loss.stats.expectations.csv", "a")
@@ -467,16 +471,17 @@ class Tracker(object):
                     Path(path).mkdir(parents=True, exist_ok=True)
                     fig.savefig(
                         path+f"/{self.solver.epoch}.discriminator.batch{self.solver.batch}.png")
-            
+
             #### MI Matrix ####
             if self.solver.loss_fn.__name__ == "jensen_shannon_mi":
                 np.save(f'{self.local_path}/jsd_mi.npy',
                         loss_fn.E_pos.detach().numpy() - loss_fn.E_neg.detach().numpy())
 
             #### Track every nth step embeddings ####
-            if ("emb_tracking" in self.cfg and type(self.cfg["emb_tracking"]) == int and
-                self.solver.epoch % self.cfg["emb_tracking"] == 0):
-                self.create_embeddings()
+            # TODO: Remove since this is done in epoch method. (Improvement by directly tack while training.)
+            # if ("emb_tracking" in self.cfg and type(self.cfg["emb_tracking"]) == int and
+            #     self.solver.epoch % self.cfg["emb_tracking"] == 0):
+            #     self.create_embeddings()
             
             #### Track Last Discriminator Values #####
             if (self.solver.epoch == self.solver.train_cfg["n_epochs"] - 1):
@@ -597,7 +602,7 @@ class Tracker(object):
                     self.save_plot(fig, path, name)
 
         if isinstance(self.solver.model, TemporalInfoGraph) and self.track_decision:
-            if  "visuals" in self.cfg and "pca" in self.cfg["visuals"] or "tsne" in self.cfg["visuals"]:
+            if "pca" in self.visuals or "tsne" in self.visuals:
                 #### Track epoch for TIG Encoder ####
                 with torch.no_grad():
                     device = self.solver.model.device
@@ -626,7 +631,7 @@ class Tracker(object):
                     }
                 }
 
-            if  "visuals" in self.cfg and "pca" in self.cfg["visuals"]:
+            if "pca" in self.visuals:
                 #### Plot embeddings with loss/metric curve (PCA or plain) ####
                 fig = plot_eval(**args,
                                 title=f"TIG Embeddings {args['emb_cfg']['mode']} - Epoch: {self.solver.epoch}",
@@ -636,7 +641,7 @@ class Tracker(object):
                 name = "TIG.embeddings.pca"
                 self.save_plot(fig, path, name)
 
-            if  "visuals" in self.cfg and "tsne" in self.cfg["visuals"]:
+            if "tsne" in self.visuals:
                 #### Plot embeddings with loss/metric curve (t-SNE) ####
                 args["emb_cfg"]["mode"] = "TSNE"
                 fig = plot_eval(**args,
@@ -648,7 +653,7 @@ class Tracker(object):
                 name = "TIG.embeddings.tsne"
                 self.save_plot(fig, path, name)
 
-            if  "visuals" in self.cfg and "loss" in self.cfg["visuals"]:
+            if "loss" in self.visuals:
                 args = {
                     "data": {
                         "TIG Train Loss (JSD MI)": self.solver.train_losses,
@@ -662,10 +667,10 @@ class Tracker(object):
                 name = "TIG.loss"
                 self.save_plot(fig, path, name)
 
-        if isinstance(self.solver.model, TemporalInfoGraph) or isinstance(self.solver.model, TemporalInfoGraphLSTM):
+        if (isinstance(self.solver.model, TemporalInfoGraph) or
+            isinstance(self.solver.model, TemporalInfoGraphLSTM)):
             #### Track Intermediate Embeddings ####
-            if ("emb_tracking" in self.cfg and type(self.cfg["emb_tracking"]) == int and
-                self.solver.epoch % self.cfg["emb_tracking"] == 0):
+            if (type(self.emb_tracking) == int and self.solver.epoch % self.emb_tracking == 0):
                 self.save_embeddings()
 
             #### Store Best Model ####
@@ -735,15 +740,15 @@ class Tracker(object):
             self.solver = train.__self__
 
             #### Pre Training ####
-            cfg["train_size"] = '{:.2f}GB'.format(sys.getsizeof(self.solver.train_loader.dataset) / 1024**3)
-            cfg["val_size"] = '{:.2f}GB'.format(sys.getsizeof(self.solver.val_loader.dataset) / 1024**3)
+            # cfg["train_size"] = '{:.2f}GB'.format(sys.getsizeof(self.solver.train_loader.dataset) / 1024**3)
+            # cfg["val_size"] = '{:.2f}GB'.format(sys.getsizeof(self.solver.val_loader.dataset) / 1024**3)
             try:
                 cfg["train_length"] = len(self.solver.train_loader.dataset)
                 cfg["val_length"] = len(self.solver.val_loader.dataset)
             except Exception as e:
                 print(e)
                 pass
-            
+
             try:
                 cfg["loss_fn"] = str(self.solver.loss_fn.__name__)
             except:
@@ -886,7 +891,7 @@ class Tracker(object):
             np.savez(f'{self.local_path}/embeddings{tag}', x=self.emb_x, y=self.emb_y)
         else:
             np.savez(f'{self.local_path}/embeddings_{self.solver.phase}{tag}', x=self.emb_x, y=self.emb_y)
-    
+
     def save_model(self, tag: str = ""):
         """
         """

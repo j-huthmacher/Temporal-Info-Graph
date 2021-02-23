@@ -23,7 +23,7 @@ from experiments import  experiment
 from config.config import log
 from data.tig_data_set import TIGDataset
 from experiments import Experiment
-from baseline import train_baseline
+from baseline import train_baseline, get_model
 
 from sklearn.metrics import accuracy_score, top_k_accuracy_score
 

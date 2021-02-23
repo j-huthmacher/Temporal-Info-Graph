@@ -203,21 +203,21 @@ elif args.baseline:
     log.info(f"Run baseline on {args.data}")
     data = TIGDataset(name=args.data, path="../content/")
     data.x = data.x.reshape(data.x.shape[0], -1)
-    
-    
+
+
     top5 = []
     top1 = []
     print("Start baseline training")    
     for p in trange(10):
         model = get_model("svm")
-        model.fit(x, y)
+        model.fit(data.x, data.y)
 
         yhat = model.decision_function(x)                
         # accuracy_score(emb_y, yhat)
         top5.append(top_k_accuracy_score(y, yhat, k = 5))
         top1.append(top_k_accuracy_score(y, yhat, k = 1))
         print(f"Iteration {i} | Top1: {np.mean(top1)} Top5: {np.mean(top5)} ")
-    
+
     print("Save baseline accuracies...")
     np.save("../content/top1_svm.npy", top1)
     np.save("../content/top5_svm.npy", top5)

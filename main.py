@@ -15,6 +15,8 @@ import yaml
 from datetime import datetime
 import numpy as np
 
+from tqdm import trange
+
 #pylint: disable=import-error
 from tracker import Tracker
 from experiments import  experiment
@@ -22,6 +24,8 @@ from config.config import log
 from data.tig_data_set import TIGDataset
 from experiments import Experiment
 from baseline import train_baseline
+
+from sklearn.metrics import accuracy_score, top_k_accuracy_score
 
 
 #### Set Up CLI ####
@@ -48,7 +52,7 @@ parser.add_argument('--prep_data', dest='prep_data', action="store_true",
 #### Baseline ####
 parser.add_argument('--baseline', dest='baseline', action="store_true",
                     help='Execute baseline')
-parser.add_argument('--data', dest='data', default="remote",
+parser.add_argument('--data', dest='data', default="stgcn_50_classes",
                     help='Name of the data set that should be used.')
 
 # parser.add_argument('--type', dest='type', action="str",
@@ -199,10 +203,30 @@ elif args.baseline:
     log.info(f"Run baseline on {args.data}")
     data = TIGDataset(name=args.data, path="../content/")
     data.x = data.x.reshape(data.x.shape[0], -1)
-    train, val = data.split()
+    
+    
+    top5 = []
+    top1 = []
+    print("Start baseline training")    
+    for p in trange(10):
+        model = get_model("svm")
+        model.fit(x, y)
 
-    train_loader = DataLoader(train, batch_size=16, shuffle=True)
-    val_loader = DataLoader(val, batch_size=16, shuffle=True)
+        yhat = model.decision_function(x)                
+        # accuracy_score(emb_y, yhat)
+        top5.append(top_k_accuracy_score(y, yhat, k = 5))
+        top1.append(top_k_accuracy_score(y, yhat, k = 1))
+        print(f"Iteration {i} | Top1: {np.mean(top1)} Top5: {np.mean(top5)} ")
+    
+    print("Save baseline accuracies...")
+    np.save("../content/top1_svm.npy", top1)
+    np.save("../content/top5_svm.npy", top5)
+    
+    
+#     train, val = data.split()
 
-    log.info("Start baseline training (Default SVM).")
-    train_baseline(data=(train_loader, val_loader), num_epochs=10)
+#     train_loader = DataLoader(train, batch_size=16, shuffle=True)
+#     val_loader = DataLoader(val, batch_size=16, shuffle=True)
+
+#     log.info("Start baseline training (Default SVM).")
+#     train_baseline(data=(train_loader, val_loader), num_epochs=10)

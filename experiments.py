@@ -141,7 +141,7 @@ def experiment(tracker: Tracker, config: dict):
             tracker.track_traning(solver.train)(config["encoder_training"])
             encoder = solver.model
 
-            if "emb_tracking" in config and config["emb_tracking"] != False:
+            if tracker.emb_tracking is not None and tracker.emb_tracking != False:
                 # Track the final embeddings after the TIG encoder is trained.
                 emb_x = np.array([])
                 emb_y = np.array([])

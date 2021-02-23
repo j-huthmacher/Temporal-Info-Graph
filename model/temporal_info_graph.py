@@ -134,7 +134,8 @@ class TemporalConvolution(nn.Module):
 
         #### Transform the Data and apply 1D conv ####
         X = X.permute(0, 2, 1, 3).reshape(N * V, C, T)  # ()
-        X = self.conv(X)  # Expects: (batch, features, times, nodes)
+        # In: (batch * nodes, features, time), Out: (batch * nodes, c_out, time)
+        X = self.conv(X)
         X = X.view(N, V, X.shape[1], -1).permute(0, 2, 1, 3)
 
         # pad_mask = pad_zero_mask(X.permute(0,3,2,1).shape, pad_idx)
@@ -262,7 +263,7 @@ class TemporalInfoGraph(nn.Module):
                  batch_norm: bool = True, A: torch.Tensor = None,
                  discriminator_layer: bool = False, residual: bool = False,
                  edge_weights: bool = False, self_connection=True, dropout=0.5,
-                 summary=False, diff_scales= False):
+                 summary=False, diff_scales= False, multi_scale=False):
         """ Initilization of the TIG model.
 
             Parameter:
@@ -296,6 +297,7 @@ class TemporalInfoGraph(nn.Module):
         self.c_in = architecture[0][0]
         self.diff_scales = diff_scales
         self.summary = summary
+        self.multi_scale = multi_scale
 
         if A is not None and self_connection:
             # mask = torch.eye(A.shape[0])
@@ -382,6 +384,7 @@ class TemporalInfoGraph(nn.Module):
             self.concat_readout = nn.Conv1d(self.concat_dim, self.embedding_dim, kernel_size=1)
             self.out_dim = self.concat_dim
 
+        
         self.fc = nn.Conv2d(self.out_dim, 1, kernel_size=1)
 
         #### Global Readout ####
@@ -432,6 +435,7 @@ class TemporalInfoGraph(nn.Module):
             X = X.reshape(N, C, V, T)
 
         concat_local = []
+        concat_scales = []
 
         for layer, e_weight, bn, resLayer in zip(self.convLayers, self.edge_weights, self.batch_norms, self.res_layers):
             # Expected layer = [(resLayer), tempConv1, specConv, tempConv2, activation]
@@ -453,6 +457,9 @@ class TemporalInfoGraph(nn.Module):
                 # Consider representations at different scale
                 # concat_local.append(F.avg_pool2d(X, (1, X.shape[-1])))
                 concat_local.append(F.avg_pool2d(X, (1, X.shape[-1])))
+            if self.multi_scale:
+                # In: (batch_size, ch_out, nodes, time) Out: (batch_size, 1, ch_out, nodes)
+                concat_scales.append(torch.squeeze(F.avg_pool2d(X, (1, X.shape[-1])).permute(0,3,1,2)))
 
         if self.diff_scales:
             Z = self.concat_readout(torch.squeeze(torch.cat(concat_local, 1)))
@@ -460,6 +467,8 @@ class TemporalInfoGraph(nn.Module):
             ### Fully Connected Layer ####
             # In: (batch_size, time, ch_out, nodes), Out: (batch_size, 1, ch_out, nodes))
             Z = torch.squeeze(self.fc(X.permute(0,3,1,2)))
+            if self.multi_scale:
+                Z = torch.cat([Z, *concat_scales], dim=2)
 
             # (batch_size, ch_out, nodes, time)	        # (batch_size, ch_out, nodes, time)
             # Z = X.mean(dim=3)

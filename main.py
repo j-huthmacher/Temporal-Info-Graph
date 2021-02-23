@@ -221,8 +221,7 @@ elif args.baseline:
     print("Save baseline accuracies...")
     np.save("../content/top1_svm.npy", top1)
     np.save("../content/top5_svm.npy", top5)
-    
-    
+
 #     train, val = data.split()
 
 #     train_loader = DataLoader(train, batch_size=16, shuffle=True)

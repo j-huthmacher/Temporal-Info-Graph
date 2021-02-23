@@ -13,9 +13,9 @@ from sklearn.metrics import accuracy_score
 
 def get_model(model, **params):
     if model == "svm":
-        return SGDClassifier(loss='hinge', random_state=0, *params)
+        return SGDClassifier(loss='hinge', random_state=0, **params)
     elif model == "logistic regression":
-        return SGDClassifier(loss='log', random_state=0, *params)
+        return SGDClassifier(loss='log', random_state=0, **params)
 
 def train_baseline(data, num_epochs=2, baseline="svm", **baseline_args):
     """ Function to train the selected baseline on the given data.

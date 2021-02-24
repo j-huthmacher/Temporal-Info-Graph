@@ -319,6 +319,7 @@ class TemporalInfoGraph(nn.Module):
         self.res_layers = []
         self.batch_norms = []
         self.concat_dim = 0
+        self.multi_scale_layers = []
 
         for layer in architecture:
             if len(layer) == 5:
@@ -337,6 +338,8 @@ class TemporalInfoGraph(nn.Module):
                 tempConv2 = nn.Identity()
             
             self.layers.append(nn.Sequential(tempConv1, specConv, tempConv2, nn.LeakyReLU()))
+
+            self.multi_scale_layers.append(nn.Conv2d(out, self.embedding_dim, kernel_size=1))
 
             #### Residual Layer ####
             if (c_in != out) and residual:
@@ -366,6 +369,7 @@ class TemporalInfoGraph(nn.Module):
         self.batch_norms = nn.Sequential(*self.batch_norms)
         self.convLayers = nn.Sequential(*self.layers)
         self.res_layers = nn.Sequential(*self.res_layers)
+        self.multi_scale_layers = nn.Sequential(*self.multi_scale_layers)
 
         #### Determine Output Dimension ####
         with torch.no_grad():
@@ -437,7 +441,9 @@ class TemporalInfoGraph(nn.Module):
         concat_local = []
         concat_scales = []
 
-        for layer, e_weight, bn, resLayer in zip(self.convLayers, self.edge_weights, self.batch_norms, self.res_layers):
+        for layer, e_weight, bn, resLayer, ms_layer in zip(self.convLayers, self.edge_weights,
+                                                           self.batch_norms, self.res_layers,
+                                                           self.multi_scale_layers):
             # Expected layer = [(resLayer), tempConv1, specConv, tempConv2, activation]
             tempConv1, specConv, tempConv2, activation = layer[-4], layer[-3], layer[-2], layer[-1]
 
@@ -458,8 +464,10 @@ class TemporalInfoGraph(nn.Module):
                 # concat_local.append(F.avg_pool2d(X, (1, X.shape[-1])))
                 concat_local.append(F.avg_pool2d(X, (1, X.shape[-1])))
             if self.multi_scale:
-                # In: (batch_size, ch_out, nodes, time) Out: (batch_size, 1, ch_out, nodes)
-                concat_scales.append(torch.squeeze(F.avg_pool2d(X, (1, X.shape[-1])).permute(0,3,1,2)))
+                # In: (batch_size, ch_out, nodes, time) Out: (batch_size, ch_out, nodes)
+                Z_hat = F.avg_pool2d(X, (1, X.shape[-1]))
+                Z_hat = torch.squeeze(ms_layer(Z_hat).permute(0,3,1,2))
+                concat_scales.append(Z_hat)
 
         if self.diff_scales:
             Z = self.concat_readout(torch.squeeze(torch.cat(concat_local, 1)))

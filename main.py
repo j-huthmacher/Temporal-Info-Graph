@@ -7,6 +7,7 @@ import os
 import json
 import signal
 import sys
+from pathlib import Path
 
 import argparse
 import torch
@@ -24,7 +25,9 @@ from config.config import log
 from data.tig_data_set import TIGDataset
 from experiments import Experiment
 from baseline import train_baseline, get_model
-from processor import train_encoder
+from processor import train_tig, train_stgcn
+
+from config.config import create_logger
 
 
 from sklearn.metrics import accuracy_score, top_k_accuracy_score
@@ -42,8 +45,10 @@ parser.add_argument('--tracking', dest='tracking', default="remote",
                     help='[remote, local], default: remote')
 parser.add_argument('--train', dest='train', action='store_true',
                     help='Flag to select trainings mode.')
-parser.add_argument('--eval', dest='eval', action='store_true',
-                    help='Flag to select evaluation mode.')
+parser.add_argument('--model', dest='model', default="tig",
+                    help='[tig, stgcn]')
+
+
 parser.add_argument('--downstream', dest='downstream', action='store_true',
                     help='Flag to determine if the downstream training should be executed.')
 parser.add_argument('--disable_local_store', dest='disable_local_store', action='store_true',
@@ -62,76 +67,52 @@ parser.add_argument('--data', dest='data', default="stgcn_50_classes",
 
 args = parser.parse_args()
 
-#### Execution ####
-if args.train:
-    db_url = open(".mongoURL", "r").readline()
-    torch.cuda.empty_cache()
-
-    name = args.name
-    config = {}
-
-    #### Load Configuration ####
-    if args.config is not None:
-        if ".yml" in args.config or ".yaml" in args.config:
-            with open(args.config) as file:
-                name = args.name
-                config = yaml.load(file, Loader=yaml.FullLoader)
-        elif ".json" in args.config:
-            with open(args.config) as file:
-                name = args.name
-                config = json.load(file)
-        else:
-            with open("./experiments/config_repo.yml") as file:
-                name += f"_{args.config}"
-                config = yaml.load(file, Loader=yaml.FullLoader)[args.config]
+#### Load Configuration ####
+name = args.name
+config = {}
+if args.config is not None:
+    if ".yml" in args.config or ".yaml" in args.config:
+        with open(args.config) as file:
+            name = args.name
+            config = yaml.load(file, Loader=yaml.FullLoader)
+    elif ".json" in args.config:
+        with open(args.config) as file:
+            name = args.name
+            config = json.load(file)
     else:
         with open("./experiments/config_repo.yml") as file:
-            name += "_standard"
-            config = yaml.load(file, Loader=yaml.FullLoader)["standard"]
+            name += f"_{args.config}"
+            config = yaml.load(file, Loader=yaml.FullLoader)[args.config]
+else:
+    with open("./experiments/config_repo.yml") as file:
+        name += "_standard"
+        config = yaml.load(file, Loader=yaml.FullLoader)["standard"]
 
-    # #### Tracker Set Up ####
+#### Execution ####
+if args.train:
     if "name" in config:
         name += f"_{config['name']}"
-    # tracking = {"ex_name": name}
-    # if args.tracking == "remote":
-    #     tracking = {
-    #         "ex_name": name,
-    #         "db_url": db_url,
-    #         "interactive": True
-    #     }
-
-    # # Training is executed from here
-    # if "tracking" in config:
-    #     tracker = Tracker(**{**tracking, **config["tracking"]})
-    # else:
-    #     tracker = Tracker(**tracking)
 
     # For reproducibility
     torch.manual_seed(0)
     config["seed"] = 0
 
-    train_encoder(config, name)
+    #### Tracking Location ####
+    date = datetime.now().strftime("%d%m%Y_%H%M")
+    path = f"./output/{date}_{name}/"
+    Path(path).mkdir(parents=True, exist_ok=True)
 
-    # try:
-    #     # experiment is the template function that is executed by the tracker and configured by "config"
-    #     tracker.track(experiment, config)
-    # except Exception as e:
-    #     log.exception(e)
-    #     tracker.cfg["status"] = "Failed (Exception)"
-    #     tracker.cfg["end_time"] = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-    #     tracker.cfg["duration"] = str(datetime.strptime(tracker.cfg["end_time"],
-    #                                                      "%d.%m.%Y %H:%M:%S") -
-    #                                   datetime.strptime(tracker.cfg["start_time"],
-    #                                                      "%d.%m.%Y %H:%M:%S"))
-    #     if tracker.local:
-    #         tracker.track_locally()
-    #     path = os.path.normpath(tracker.local_path)
-    #     for retry in range(100):
-    #         try:
-    #             os.rename(path, path.replace(path.split(os.sep)[-1], "FAILED_"+path.split(os.sep)[-1]))
-    #             break
-    #         except:
-    #             pass
+    log = create_logger(path)
+
+    if args.model == "tig":
+        train_tig(config, path)
+    elif args.model == "stgcn":
+        train_stgcn(config, path)
+    else:
+        log.info(f"Model not found ({args.model })!")
+    
+    log.info(f"Training done. Output path: {path}")
+
 
 elif args.eval:
     torch.cuda.empty_cache()
@@ -186,6 +167,7 @@ elif args.prep_data:
 
     log.info("Data set processed")
 
+
 elif args.baseline:
     log.info(f"Run baseline on {args.data}")
     data = TIGDataset(name=args.data, path="../content/")
@@ -209,10 +191,3 @@ elif args.baseline:
     np.save("../content/top1_svm.npy", top1)
     np.save("../content/top5_svm.npy", top5)
 
-#     train, val = data.split()
-
-#     train_loader = DataLoader(train, batch_size=16, shuffle=True)
-#     val_loader = DataLoader(val, batch_size=16, shuffle=True)
-
-#     log.info("Start baseline training (Default SVM).")
-#     train_baseline(data=(train_loader, val_loader), num_epochs=10)

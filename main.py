@@ -24,6 +24,8 @@ from config.config import log
 from data.tig_data_set import TIGDataset
 from experiments import Experiment
 from baseline import train_baseline, get_model
+from processor import train_encoder
+
 
 from sklearn.metrics import accuracy_score, top_k_accuracy_score
 
@@ -87,64 +89,49 @@ if args.train:
             name += "_standard"
             config = yaml.load(file, Loader=yaml.FullLoader)["standard"]
 
-    #### Tracker Set Up ####
+    # #### Tracker Set Up ####
     if "name" in config:
         name += f"_{config['name']}"
-    tracking = {"ex_name": name}
-    if args.tracking == "remote":
-        tracking = {
-            "ex_name": name,
-            "db_url": db_url,
-            "interactive": True
-        }
+    # tracking = {"ex_name": name}
+    # if args.tracking == "remote":
+    #     tracking = {
+    #         "ex_name": name,
+    #         "db_url": db_url,
+    #         "interactive": True
+    #     }
 
-    # Training is executed from here
-    if "tracking" in config:
-        tracker = Tracker(**{**tracking, **config["tracking"]})
-    else:
-        tracker = Tracker(**tracking)
+    # # Training is executed from here
+    # if "tracking" in config:
+    #     tracker = Tracker(**{**tracking, **config["tracking"]})
+    # else:
+    #     tracker = Tracker(**tracking)
 
     # For reproducibility
     torch.manual_seed(0)
     config["seed"] = 0
 
-    #### Handler to Captue Crtl+C (Doesn't work) ####
-    def signal_handler(sig, frame):
-        tracker.cfg["status"] = "Failed (Exception)"
-        tracker.cfg["end_time"] = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-        tracker.cfg["duration"] = str(datetime.strptime(tracker.cfg["end_time"],
-                                                            "%d.%m.%Y %H:%M:%S") -
-                                    datetime.strptime(tracker.cfg["start_time"],
-                                                            "%d.%m.%Y %H:%M:%S"))
-        if tracker.local:
-                tracker.track_locally()
-        path = os.path.normpath(tracker.local_path).split(os.sep)
-        os.rename(path, path.replace(path[-1], "FAILED_"+path[-1]))
-        sys.exit(0)
+    train_encoder(config, name)
 
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM , signal_handler)
-
-    try:
-        # experiment is the template function that is executed by the tracker and configured by "config"
-        tracker.track(experiment, config)
-    except Exception as e:
-        log.exception(e)
-        tracker.cfg["status"] = "Failed (Exception)"
-        tracker.cfg["end_time"] = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-        tracker.cfg["duration"] = str(datetime.strptime(tracker.cfg["end_time"],
-                                                         "%d.%m.%Y %H:%M:%S") -
-                                      datetime.strptime(tracker.cfg["start_time"],
-                                                         "%d.%m.%Y %H:%M:%S"))
-        if tracker.local:
-            tracker.track_locally()
-        path = os.path.normpath(tracker.local_path)
-        for retry in range(100):
-            try:
-                os.rename(path, path.replace(path.split(os.sep)[-1], "FAILED_"+path.split(os.sep)[-1]))
-                break
-            except:
-                pass
+    # try:
+    #     # experiment is the template function that is executed by the tracker and configured by "config"
+    #     tracker.track(experiment, config)
+    # except Exception as e:
+    #     log.exception(e)
+    #     tracker.cfg["status"] = "Failed (Exception)"
+    #     tracker.cfg["end_time"] = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+    #     tracker.cfg["duration"] = str(datetime.strptime(tracker.cfg["end_time"],
+    #                                                      "%d.%m.%Y %H:%M:%S") -
+    #                                   datetime.strptime(tracker.cfg["start_time"],
+    #                                                      "%d.%m.%Y %H:%M:%S"))
+    #     if tracker.local:
+    #         tracker.track_locally()
+    #     path = os.path.normpath(tracker.local_path)
+    #     for retry in range(100):
+    #         try:
+    #             os.rename(path, path.replace(path.split(os.sep)[-1], "FAILED_"+path.split(os.sep)[-1]))
+    #             break
+    #         except:
+    #             pass
 
 elif args.eval:
     torch.cuda.empty_cache()

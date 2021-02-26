@@ -336,7 +336,7 @@ class TemporalInfoGraph(nn.Module):
                 # specConv = SpectralConvolution(c_in=c_out, c_out=out)#, weights=self.spectral_weights)
                 specConv = nn.Identity()
                 tempConv2 = nn.Identity()
-            
+
             self.layers.append(nn.Sequential(tempConv1, specConv, tempConv2, nn.LeakyReLU()))
 
             self.multi_scale_layers.append(nn.Conv2d(out, self.embedding_dim, kernel_size=1))
@@ -388,7 +388,6 @@ class TemporalInfoGraph(nn.Module):
             self.concat_readout = nn.Conv1d(self.concat_dim, self.embedding_dim, kernel_size=1)
             self.out_dim = self.concat_dim
 
-        
         self.fc = nn.Conv2d(self.out_dim, 1, kernel_size=1)
 
         #### Global Readout ####
@@ -440,6 +439,11 @@ class TemporalInfoGraph(nn.Module):
 
         concat_local = []
         concat_scales = []
+        
+        if not hasattr(self, "multi_scale_layers"):
+            # Compatibility with older models
+            self.multi_scale_layers = [nn.Identity()] * len(self.convLayers)
+            self.multi_scale = False
 
         for layer, e_weight, bn, resLayer, ms_layer in zip(self.convLayers, self.edge_weights,
                                                            self.batch_norms, self.res_layers,

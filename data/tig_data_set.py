@@ -29,7 +29,7 @@ class TIGDataset(Dataset):
     """ TIG data set for data that is too large for the memory.
     """
 
-    def __init__(self, name: str, path: str = "./dataset/",
+    def __init__(self, name: str = None, path: str = "./dataset/",
                  s_files: [str] = None, verbose: bool = False, process_label=False,
                  lim: int = None, split_persons: bool = False):
         """ Initialization of the TIG DataSet
@@ -43,56 +43,57 @@ class TIGDataset(Dataset):
                     Path of the output folder, where the data will be located.
         """
         super().__init__()
+        
+        if name is not None:
+            self.verbose = verbose
+            self.path = f"{path}{name}/"
+            self.name = name
+            self.file_name = name + ".npz"
+            self.lim = lim
+            self.split_persons = split_persons
 
-        self.verbose = verbose
-        self.path = f"{path}{name}/"
-        self.name = name
-        self.file_name = name + ".npz"
-        self.lim = lim
-        self.split_persons = split_persons
+            self.x = []
+            self.y = []
 
-        self.x = []
-        self.y = []
-
-        # if name == "stgcn":
-        #     self.load_stgcn_data()
-        #     if split_persons:
-        #         self.A = KINECT_ADJACENCY[:18, :18]
-        #     else:
-        #         self.A = KINECT_ADJACENCY
-        # elif name == "stgcn_local" or name == "stgcn_2080":
-        #     self.load_stgcn_local()
-        #     if split_persons:
-        #         self.A = KINECT_ADJACENCY[:18, :18]
-        #     else:
-        #         self.A = KINECT_ADJACENCY
-        if name == "ntu_rgb_d_local":
-            self.load_ntu_rgb_d_local()
-            self.A = NTU_ADJACENCY
-        else:
-            if s_files is not None:
-                files = []
-                for folder in s_files:
-                    files.extend([join(folder, f) for f in listdir(folder)])
-                if process_label:
-                    self.process_label(files)
-                else:
-                    self.process(files)
-            else:
-                # Download and extract data if not exists.
-                self.load_data()
-            if "stgcn" in name:
-                self.A = KINECT_ADJACENCY#[:18, :18]
-            elif "ntu" in name:
+            # if name == "stgcn":
+            #     self.load_stgcn_data()
+            #     if split_persons:
+            #         self.A = KINECT_ADJACENCY[:18, :18]
+            #     else:
+            #         self.A = KINECT_ADJACENCY
+            # elif name == "stgcn_local" or name == "stgcn_2080":
+            #     self.load_stgcn_local()
+            #     if split_persons:
+            #         self.A = KINECT_ADJACENCY[:18, :18]
+            #     else:
+            #         self.A = KINECT_ADJACENCY
+            if name == "ntu_rgb_d_local":
+                self.load_ntu_rgb_d_local()
                 self.A = NTU_ADJACENCY
             else:
-                self.A = KINECT_ADJACENCY
+                if s_files is not None:
+                    files = []
+                    for folder in s_files:
+                        files.extend([join(folder, f) for f in listdir(folder)])
+                    if process_label:
+                        self.process_label(files)
+                    else:
+                        self.process(files)
+                else:
+                    # Download and extract data if not exists.
+                    self.load_data()
+                if "stgcn" in name:
+                    self.A = KINECT_ADJACENCY#[:18, :18]
+                elif "ntu" in name:
+                    self.A = NTU_ADJACENCY
+                else:
+                    self.A = KINECT_ADJACENCY
 
-        try:
-            path = "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics-skeleton_labels.npz"
-            self.label_info = np.load(path, allow_pickle=True, mmap_mode="r")["labels"]
-        except:
-            pass
+            try:
+                path = "C:/Users/email/Documents/Studium/LMU/5_Semester/Masterthesis/Datasets/Kinetics-skeleton/kinetics-skeleton/kinetics-skeleton_labels.npz"
+                self.label_info = np.load(path, allow_pickle=True, mmap_mode="r")["labels"]
+            except:
+                pass
     
     def to_tensor(self):
         self.x = torch.tensor(self.x)
@@ -280,8 +281,12 @@ class TIGDataset(Dataset):
 
         log.info(f"Load data...")
         data = np.load(self.path + self.file_name, allow_pickle=True, mmap_mode="r")
-        self.x = np.asarray(list(data["x"]))
-        self.y = np.asarray(list(data["y"]))
+        if self.lim is not None:
+            self.x = np.asarray(list(data["x"]))[:self.lim]
+            self.y = np.asarray(list(data["y"]))[:self.lim]
+        else:
+            self.x = np.asarray(list(data["x"]))
+            self.y = np.asarray(list(data["y"]))
         with open(self.path + 'kinetics_class_dict.json', "rb") as f:
             self.classes = json.load(f)
 

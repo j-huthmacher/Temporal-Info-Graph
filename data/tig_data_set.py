@@ -12,6 +12,7 @@ from os.path import isfile, join, exists
 from tqdm import tqdm
 import pickle
 import requests
+from sklearn import preprocessing
 
 import numpy as np
 import torch
@@ -287,6 +288,11 @@ class TIGDataset(Dataset):
         else:
             self.x = np.asarray(list(data["x"]))
             self.y = np.asarray(list(data["y"]))
+
+        
+        le = preprocessing.LabelEncoder()
+        self.y = le.fit_transform(self.y)
+
         with open(self.path + 'kinetics_class_dict.json', "rb") as f:
             self.classes = json.load(f)
 

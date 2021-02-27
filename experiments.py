@@ -223,7 +223,7 @@ class Experiment():
         #### Load Attributes ####
         #### Load Embeddings
         try:
-            data = self.load[con]("embeddings", "embeddings.npz")
+            data = self.load[con]("embeddings", "embeddings_full.npz")
             self.emb_loader = DataLoader(list(zip(data["x"], data["y"])))
         except:
             try:
@@ -240,10 +240,10 @@ class Experiment():
 
         #### TIG Artifacts ####
         try:
-            self.tig_train_loss = self.load[con]("loss", "TIG_train_losses.npy")
-            self.tig_val_loss = self.load[con]("loss", "TIG_val_losses.npy")
-            
+            self.tig_train_loss = self.load[con]("loss", "TIG_train_losses.npy")            
             self.tig_train_metrics = self.load[con]("metric", "TIG_train.metrics.npz")
+            
+            self.tig_val_loss = self.load[con]("loss", "TIG_val_losses.npy")
             self.tig_val_metrics = self.load[con]("metric", "TIG_val.metrics.npz")
             try:
                 self.tig_best = self.load[con]("model", "TIG__best.pt")
@@ -511,10 +511,12 @@ class Experiment():
                 args = {
                     "data": {
                         "Train Loss": self.tig_train_loss,
-                        "Val Loss": self.tig_val_loss
                         }
                     }
+                if hasattr(self, "tig_val_loss"):
+                    args["data"][ "Val Loss"] = self.tig_val_loss
             elif name == "TIG.metric"  and hasattr(self, "tig_train_metrics"):
+                print(name)
                 model_name = "TIG: "
                 title = "Metric"
 
@@ -523,7 +525,15 @@ class Experiment():
                     }
 
                 if which is None:
-                    args["data"] = {**self.tig_train_metrics, **self.tig_val_metrics}
+                    args["data"] = {**self.tig_train_metrics}
+                else:
+                    args["data"] = {}
+                    for metric in which:
+                        args["data"]["Train " + metric.capitalize()] = self.tig_train_metrics[metric]
+                        if hasattr(self, "tig_val_metrics"):
+                            args["data"]["Val " + metric.capitalize()] = self.tig_val_metrics["val. " + metric]
+            
+
 
             elif name == "MLP.loss":
                 model_name = "MLP: "
@@ -562,10 +572,13 @@ class Experiment():
         """
         return plot_emb(self.emb_x_best, self.emb_y_best, **kwargs)
 
-    def plot_emb(self, **kwargs):
+    def plot_emb(self,x=None, y=None, **kwargs):
         """
         """
-        return plot_emb(self.emb_x, self.emb_y, **kwargs)
+        if x is None and y is None:
+            return plot_emb(self.emb_x, self.emb_y, **kwargs)
+        else:
+            return plot_emb(x, y, **kwargs)
 
     def plot_class_distr(self):
         fig, ax = plt.subplots(figsize=(7,5))
@@ -684,8 +697,12 @@ class Experiment():
         """
         """
         pca = PCA(n_components=3, random_state=123)
-        x = self.emb_x
-        y = self.emb_y
+        if self.emb_x is not None:
+            x = self.emb_x
+            y = self.emb_y
+        else:
+            x = self.emb_x_best
+            y = self.emb_y_best
 
         spectral_cmap = sns.color_palette("Spectral", as_cmap=True)
         spectral_rgb = []

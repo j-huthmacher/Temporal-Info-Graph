@@ -49,9 +49,9 @@ def train_stgcn(config, path):
     # model = TemporalInfoGraph(A=data.A[:18, :18])
     model = ST_GCN_18(2, 49, graph_cfg, edge_importance_weighting=False)
 
-    if "print_summary" in config and config["print_summary"]:
-        summary(model.to("cuda"), input_size=(2, data.A.shape[0], 300),
-                batch_size=config["loader"]["batch_size"])
+    # if "print_summary" in config and config["print_summary"]:
+    #     summary(model.to("cuda"), input_size=(2, data.A.shape[0], 300),
+    #             batch_size=config["loader"]["batch_size"])
 
     model = model.to("cuda")
 

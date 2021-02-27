@@ -1,7 +1,4 @@
 complex_encoder:
-  tracking:
-    which: ["epoch"]
-    emb_tracking: True
   data:
     name: stgcn_50_classes
     path: ./content/
@@ -9,35 +6,22 @@ complex_encoder:
   loader: 
     batch_size: 256
     shuffle: True
-  loss: jsd
-  print_summary: True
-  encoder: 
-    # [(c_in, c_out, spec_out, out, kernel)]
+  loss: bce
+  emb_tracking: 10
+  model: 
     architecture: [
-      [ 2, 32, 64, 64, 36 ],
-      [ 64, 64, 128, 128, 36 ],
-      [ 128, 128, 256, 256, 36 ]
+      [2, 64, 64, 128],
+      [128, 128, 128, 128],
+      [128, 128, 128, 128],
+      [128, 256, 256, 256]
    ]
-    residual: True
-    discriminator_layer: False
-    dropout: 0
-  encoder_training:
+  training:
     verbose: True
-    n_epochs: 50
+    n_epochs: 100
     optimizer_name: Adam
     optimizer:
       lr: 0.01
-    # gradient_clipping: 0.2
-  # classifier: 
-  #   in_dim: 256
-  #   hidden_layers: [128, 512, 256]
-  # classifier_training:
-  #   verbose: True
-  #   n_epochs: 50
-  #   optimizer_name: Adam
-  #   optimizer:
-  #     lr: 0.01
-  #   gradient_clipping: 0.2
+
   
 small_complex_encoder:
   data:

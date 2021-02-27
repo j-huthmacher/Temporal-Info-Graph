@@ -107,10 +107,11 @@ if args.train:
     if args.model == "tig":
         train_tig(config, path)
     elif args.model == "stgcn":
-        train_stgcn(config, path)
+        for i in range(10):
+            train_stgcn(config, path + f"/{i}/")
     else:
         log.info(f"Model not found ({args.model })!")
-    
+
     log.info(f"Training done. Output path: {path}")
 
 

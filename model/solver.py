@@ -126,8 +126,6 @@ class Solver():
     def train_step(self, batch_x, batch_y, encoder=None):
         """ Train step function to reduce memory footprint.
         """
-        # The train loader returns dim (batch_size, frames, nodes, features)
-        # TODO: Check if it is needed
         try:
             if isinstance(batch_x, torch.Tensor):
                 batch_x = batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1)

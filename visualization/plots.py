@@ -20,7 +20,7 @@ plt.style.use('seaborn')
 
 #### Single Plots ####
 def plot_emb(x: np.array, y: np.array, title: str = "", ax: matplotlib.axes.Axes = None,
-             count: bool = False, mode: str = "PCA", label=None, figsize=(7,7)):
+             count: bool = False, mode: str = "PCA", label=None, figsize=(7,7), legend=False):
     """ Plot embeddings.
 
         Paramters:
@@ -88,7 +88,8 @@ def plot_emb(x: np.array, y: np.array, title: str = "", ax: matplotlib.axes.Axes
         ax[0].scatter(x[y==label][:,0], x[y==label][:,1], color=cmap(norm(label)), label=label,
                       edgecolors='w')
     
-    ax[0].legend()
+    if legend:
+        ax[0].legend()
     
     ax[0].set_title(f"{title} {mode_str}")
     if count:
@@ -179,7 +180,7 @@ def plot_emb_pred(x: np.array, y, clf: torch.nn.Module, precision: float = 0.02,
 
 
 def plot_curve(data: dict, ax: matplotlib.axes.Axes = None, n_epochs: int = None, title: str = "",
-               model_name: str = "TIG", line_mode: callable = np.min, n_batches: int = None):
+               model_name: str = "TIG", line_mode: callable = np.min, n_batches: int = None, with_confidence=True):
     """ Plot loss/metric.
 
         Parameters:
@@ -230,6 +231,12 @@ def plot_curve(data: dict, ax: matplotlib.axes.Axes = None, n_epochs: int = None
             ax.get_xaxis().set_major_locator(MaxNLocator(integer=True))
 
         ax.yaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+        
+#         if with_confidence:
+#             #some confidence interval
+#             ci = 1.96 * np.std(l)/np.mean(l)
+                                          
+#             ax.fill_between(np.arange(len(l)), (l-ci), (l+ci), color='b', alpha=.1)
 
     ax.set_title(f"{model_name} {title}")
     ax.figure.tight_layout()

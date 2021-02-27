@@ -11,7 +11,7 @@ class TemporalInfoGraphLSTM(nn.Module):
         the time component.
     """
 
-    def __init__(self, ch_in = 2, hidden_size=256, num_layers=2,
+    def __init__(self, ch_in = 2, hidden_size=64, num_layers=2,
                  batch_norm: bool = True, A: torch.Tensor = None,
                  self_connection: bool = True):
         """ Initilization of the TIG model.

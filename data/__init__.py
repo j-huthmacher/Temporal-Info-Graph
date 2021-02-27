@@ -3,6 +3,7 @@
 # from data.tig_data_set import TIGDataset
 from data.data_utils import get_loss, get_normalized_adj
 
+
 from scipy.linalg import block_diag
 import numpy as np 
 

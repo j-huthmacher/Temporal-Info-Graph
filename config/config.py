@@ -85,11 +85,3 @@ def create_logger(fpath, name = 'TIG_Logger', suffix = ""):
         # log.propagate = False
 
     return log_
-    # Custom logger configuration.
-    # log.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
-    #                 datefmt='%d.%m.%Y %H:%M:%S',
-    #                 level=log.INFO,
-    #                 handlers=[
-    #                     log.FileHandler(f'logs/DH_{datetime.now().date()}.log'),
-    #                     log.StreamHandler()
-    #                 ])

@@ -103,8 +103,6 @@ class SpectralConvolution(nn.Module):
 
 
 class TemporalInfoGraph(nn.Module):
-
-
     def __init__(self, architecture: list = None, A: torch.Tensor = None,
                  mode: str = "encode"):
 
@@ -126,8 +124,8 @@ class TemporalInfoGraph(nn.Module):
         if architecture is None:
             # Fits in 4 GB Memory
             architecture = [
-                (2, 64, 64, 128),
-                (128, 128, 128, 256)
+                (2, 64, 64, 64),
+                (64, 128, 128, 256)
             ]
 
         for c_in, c_out, spec_out, out  in architecture:
@@ -163,6 +161,8 @@ class TemporalInfoGraph(nn.Module):
 
         if self.mode == "classify":
             self.fcn = nn.Conv2d(256, 50, kernel_size=1)
+        else:
+            self.fcn = nn.Conv2d(out, out, kernel_size=1)
 
     def forward(self, X: torch.Tensor):
 
@@ -186,6 +186,7 @@ class TemporalInfoGraph(nn.Module):
         if self.mode == "encode":
             # Average over time
             # In: (batch * persons, features, time, nodes), Out:(batch * persons, features, 1, nodes)
+            X = self.fcn(X)
             X = F.avg_pool2d(X, (X.size()[2], 1))
             # Average over persons
             # In: (batch, persons, features, 1, nodes), Out:(batch, 1, features, 1, nodes)

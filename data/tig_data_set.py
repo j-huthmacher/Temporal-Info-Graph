@@ -377,7 +377,7 @@ class TIGDataset(Dataset):
 
         return sets[0] if mode <= 1 else sets
 
-    def stratify(self, num: int, train_ratio=0.8, val_ratio=0.1, mode=2, lim=None,
+    def stratify(self, num: int, num_samples = None, train_ratio=0.8, val_ratio=0.1, mode=2, lim=None,
                  ret_idx=False):
         """
         """
@@ -385,12 +385,19 @@ class TIGDataset(Dataset):
         merged = np.asarray((unique, counts)).T
         sor = merged[merged[:, 1].argsort()][::-1]
 
-        classes = sor[:num, 0]  # Top n classes
-        class_idx,  = np.where(np.isin(self.y, classes))
+        classes = np.unique(sor[:num, 0])  # Top n classes
+        class_idx = np.array([], dtype=int)
+        for cls in classes:
+            class_idx = np.append(class_idx,
+                                   np.where(self.y == cls)[0][:num_samples])
 
-        train_threshold = int(self.y[class_idx].shape[0] * train_ratio)
-        val_threshold = int(self.y[class_idx].shape[0]
-                            * (train_ratio + val_ratio))
+        # class_idx,  = np.where(np.isin(self.y, classes))
+        if mode != 1:
+            train_threshold = int(self.y[class_idx].shape[0] * train_ratio)
+            val_threshold = int(self.y[class_idx].shape[0]
+                                * (train_ratio + val_ratio))
+        else:
+            train_threshold = None
 
         if lim is not None and lim < len(class_idx):
             # lim = lim if lim <= self.y[class_idx].shape[0] else self.y[class_idx].shape[0]

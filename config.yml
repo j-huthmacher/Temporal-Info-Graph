@@ -13,7 +13,6 @@ complex_encoder:
       [2, 64, 64, 128],
       [128, 256, 256, 256]
    ]
-   ]
   training:
     verbose: True
     n_epochs: 100
@@ -34,7 +33,7 @@ small_complex_encoder:
   loss: bce
   training:
     verbose: True
-    n_epochs: 50
+    n_epochs: 200
     optimizer_name: Adam
     optimizer:
       lr: 0.01

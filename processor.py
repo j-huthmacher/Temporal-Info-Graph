@@ -192,7 +192,10 @@ def train_tig(config, path):
 
     #### Data Set Up ####
     data = TIGDataset(**config["data"])
-    loader = DataLoader(data, **config["loader"])
+
+    train = data.stratify(num=2, num_samples=100, mode=1)
+
+    loader = DataLoader(train, **config["loader"])
 
     #### Model #####
     model_cfg = config["model"] if "model" in config else {}

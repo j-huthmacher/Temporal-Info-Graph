@@ -66,7 +66,7 @@ parser.add_argument('--data', dest='data', default="stgcn_50_classes",
 #                     help='Prepare data.')
 
 args = parser.parse_args()
-log = create_logger(path)
+
 
 #### Load Configuration ####
 name = args.name
@@ -85,7 +85,7 @@ if args.config is not None:
             name += f"_{args.config}"
             config = yaml.load(file, Loader=yaml.FullLoader)[args.config]
 else:
-    log.error("No config provided.")
+    print("No config provided.")
 
 #### Execution ####
 if args.train:
@@ -101,7 +101,8 @@ if args.train:
     path = f"./output/{date}_{name}/"
     Path(path).mkdir(parents=True, exist_ok=True)
 
-    
+    log = create_logger(path)
+
     for i in range(5):
         log.info(f"Train loop: {i}")
         Path(path + f"{i}").mkdir(parents=True, exist_ok=True)

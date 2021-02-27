@@ -240,15 +240,15 @@ class Tracker(object):
             if self.local:
                 self.track_locally()
 
-        elif mode == "epoch" and (mode in self.which or self.which is None):
+        elif mode == "epoch" and (self.which is None or mode in self.which):
             self.track_epoch()
-        elif mode == "training" and (mode in self.which or self.which is None):
+        elif mode == "training" and (self.which is None or mode in self.which):
             self.track_train()  # Not used yet!
-        elif mode == "validation" and (mode in self.which or self.which is None):
+        elif mode == "validation" and (self.which is None or mode in self.which):
             self.track_validation()  # Not used yet!
-        elif mode == "evaluation" and (mode in self.which or self.which is None):
+        elif mode == "evaluation" and (self.which is None or mode in self.which):
             self.track_evaluation()  # Not used yet!
-        elif mode == "train_step" and (mode in self.which or self.which is None):
+        elif mode == "train_step" and (self.which is None or mode in self.which):
             self.track_train_step()
 
     #### (Individual) Tracker Functions #####

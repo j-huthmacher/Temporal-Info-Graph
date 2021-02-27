@@ -82,10 +82,25 @@ class TemporalConvolution(nn.Module):
         else:
             padding = 0
 
-        self.conv = nn.Conv1d(self.c_in,
-                              self.c_out,
-                              kernel_size=self.kernel[1],
-                              padding=padding)
+        # self.conv = nn.Conv1d(self.c_in,
+        #                       self.c_out,
+        #                       kernel_size=self.kernel[1],
+        #                       padding=padding)
+        
+        padding = ((self.kernel[1] - 1) // 2, 0)
+        self.tcn = nn.Sequential(
+            nn.BatchNorm2d(self.c_in),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(
+                self.c_in,
+                self.c_out,
+                (self.kernel[1], 1),
+                (1, 1),
+                padding,
+            ),
+            nn.BatchNorm2d(self.c_out),
+            nn.Dropout(0.5, inplace=True),
+        )
 
         if weights is not None:
             self.conv.weight = torch.nn.Parameter(self.weights)
@@ -102,7 +117,8 @@ class TemporalConvolution(nn.Module):
         self.activation = getattr(nn, activation)()
 
         #### TO DEVICE #####
-        self.conv = self.conv.to(self.device)
+        # self.conv = self.conv.to(self.device)
+        self.tcn = self.tcn.to(self.device)
 
     @property
     def device(self):
@@ -133,17 +149,20 @@ class TemporalConvolution(nn.Module):
         # pad_idx = pad_zero_idx(X.permute(0,3,2,1))
 
         #### Transform the Data and apply 1D conv ####
-        X = X.permute(0, 2, 1, 3).reshape(N * V, C, T)  # ()
+        # X = X.permute(0, 2, 1, 3).reshape(N * V, C, T)  # ()
         # In: (batch * nodes, features, time), Out: (batch * nodes, c_out, time)
-        X = self.conv(X)
-        X = X.view(N, V, X.shape[1], -1).permute(0, 2, 1, 3)
+        # X = self.conv(X)       
+        # X = X.view(N, V, X.shape[1], -1).permute(0, 2, 1, 3)
+
+        # In: (batch, features, time, nodes)
+        X = self.tcn(X.permute(0, 1, 3, 2)).permute(0, 1, 3, 2)
 
         # pad_mask = pad_zero_mask(X.permute(0,3,2,1).shape, pad_idx)
         # X.permute(0,3,2,1)[pad_mask] = 0
 
-        if not self.debug:
-            # X = self.bn2(X)
-            X = self.dropout(X)
+        # if not self.debug:
+        #     # X = self.bn2(X)
+        #     X = self.dropout(X)
 
         # X = X.permute(0, 1, 3, 2)
 
@@ -339,12 +358,12 @@ class TemporalInfoGraph(nn.Module):
 
             self.layers.append(nn.Sequential(tempConv1, specConv, tempConv2, nn.LeakyReLU()))
 
-            self.multi_scale_layers.append(nn.Conv2d(out, self.embedding_dim, kernel_size=1))
+            # self.multi_scale_layers.append(nn.Conv2d(out, self.embedding_dim, kernel_size=1))
 
             #### Residual Layer ####
             if (c_in != out) and residual:
                 res_kernel = (1, (kernel*2)-1) if len(layer) == 5 else (1, kernel)
-                residual = nn.Sequential(nn.Conv2d(c_in, out, kernel_size=res_kernel),
+                residual = nn.Sequential(nn.Conv2d(c_in, out, kernel_size=1),
                                          nn.BatchNorm2d(out))
                 # residual = nn.Identity() # Feed the raw input to the end
                 self.res_layers.append(residual)
@@ -369,13 +388,13 @@ class TemporalInfoGraph(nn.Module):
         self.batch_norms = nn.Sequential(*self.batch_norms)
         self.convLayers = nn.Sequential(*self.layers)
         self.res_layers = nn.Sequential(*self.res_layers)
-        self.multi_scale_layers = nn.Sequential(*self.multi_scale_layers)
+        # self.multi_scale_layers = nn.Sequential(*self.multi_scale_layers)
 
         #### Determine Output Dimension ####
-        with torch.no_grad():
-            input_size = (self.c_in, self.num_nodes, 300)
-            xhat = torch.zeros(input_size).unsqueeze_(dim=0)
-            _, self.out_ch, _, self.out_dim = self.convLayers(xhat).shape
+        # with torch.no_grad():
+        #     input_size = (self.c_in, self.num_nodes, 300)
+        #     xhat = torch.zeros(input_size).unsqueeze_(dim=0)
+        #     _, self.out_ch, _, self.out_dim = self.convLayers(xhat).shape
 
         #### Discriminator FF ####
         self.discriminator_layer = discriminator_layer
@@ -388,6 +407,7 @@ class TemporalInfoGraph(nn.Module):
             self.concat_readout = nn.Conv1d(self.concat_dim, self.embedding_dim, kernel_size=1)
             self.out_dim = self.concat_dim
 
+        self.out_dim = 256
         self.fc = nn.Conv2d(self.out_dim, 1, kernel_size=1)
 
         #### Global Readout ####
@@ -397,6 +417,7 @@ class TemporalInfoGraph(nn.Module):
         # self.readout = nn.Identity() #nn.Sequential(nn.Linear(256 * 36, 256))
 
         # self.bn = nn.BatchNorm2d(self.out_ch)
+        self.fcn = nn.Conv2d(256, 49, kernel_size=1)
 
     @property
     def device(self):
@@ -431,7 +452,7 @@ class TemporalInfoGraph(nn.Module):
         N, C, V, T = X.shape
 
         #### Data Normalization ####
-        if hasattr(self, "data_norm"):            
+        if hasattr(self, "data_norm"):
             X = X.reshape(N, V * C, T)  # Flatten to create large feature matrix
             X = self.data_norm(X)
             # Convert back to original format
@@ -439,7 +460,7 @@ class TemporalInfoGraph(nn.Module):
 
         concat_local = []
         concat_scales = []
-        
+
         if not hasattr(self, "multi_scale_layers"):
             # Compatibility with older models
             self.multi_scale_layers = [nn.Identity()] * len(self.convLayers)
@@ -505,7 +526,11 @@ class TemporalInfoGraph(nn.Module):
             # local_Z = Z#.permute(0, 2, 1)
 
         # Remove "empty" dimensions
-        return torch.squeeze(global_Z, dim=-1), torch.squeeze(local_Z, dim=-1)
+        # return torch.squeeze(global_Z, dim=-1), torch.squeeze(local_Z, dim=-1)
+
+        Z = self.fcn(torch.unsqueeze(Z, dim= -1))
+        Z = Z.view(Z.size(0), -1)
+        return Z
 
     def reshape_3d_2d(self, x):
         """

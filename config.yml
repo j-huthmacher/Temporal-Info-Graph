@@ -11,9 +11,8 @@ complex_encoder:
   model: 
     architecture: [
       [2, 64, 64, 128],
-      [128, 128, 128, 128],
-      [128, 128, 128, 128],
       [128, 256, 256, 256]
+   ]
    ]
   training:
     verbose: True
@@ -22,7 +21,6 @@ complex_encoder:
     optimizer:
       lr: 0.01
 
-  
 small_complex_encoder:
   data:
     name: stgcn_50_classes
@@ -32,9 +30,6 @@ small_complex_encoder:
   loader:
     batch_size: 16
     shuffle: True
-  stratify:
-    num: 2
-    lim: 100
   emb_tracking: 10
   loss: bce
   training:

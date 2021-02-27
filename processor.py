@@ -46,7 +46,8 @@ def train_stgcn(config, path):
         "layout": 'openpose',
         "strategy": 'spatial'
     }
-    model = TemporalInfoGraph(A=data.A[:18, :18])
+    model_cfg = config["model"] if "model" in config else {}
+    model = TemporalInfoGraph(**model_cfg, mode="classify", A=data.A[:18, :18])
     # model = ST_GCN_18(2, 49, graph_cfg, edge_importance_weighting=False)
 
     # if "print_summary" in config and config["print_summary"]:
@@ -194,11 +195,12 @@ def train_tig(config, path):
     loader = DataLoader(data, **config["loader"])
 
     #### Model #####
-    model = TemporalInfoGraph(A=data.A[:18, :18])
+    model_cfg = config["model"] if "model" in config else {}
+    model = TemporalInfoGraph(**model_cfg, A=data.A[:18, :18])
 
-    if "print_summary" in config and config["print_summary"]:
-        summary(model.to("cuda"), input_size=(2, data.A.shape[0], 300),
-                batch_size=config["loader"]["batch_size"])
+    # if "print_summary" in config and config["print_summary"]:
+    #     summary(model.to("cuda"), input_size=(2, data.A.shape[0], 300),
+    #             batch_size=config["loader"]["batch_size"])
 
     model = model.to("cuda")
 

@@ -1,214 +1,361 @@
+""" PyTest to test the model.
 """
-
-"""
-# pylint: disable=not-callable
-import unittest
+# pylint: disable=wrong-import-position, import-error
+import sys
+import os
+myPath = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, myPath + '/../')
 
 import torch
 
-# pylint: disable=import-error
-from model.temporal_info_graph import TemporalInfoGraph
+from model.temporal_info_graph import TemporalInfoGraph, TemporalConvolution, SpectralConvolution
 
 # For reproducibility
 torch.manual_seed(0)
 
 
-class TestModel(unittest.TestCase):
-    """ Test class for evaluation function.
+def test_tig_dimension():
+    """ Test the dimensions of the TIG encoder.
     """
+    X = torch.tensor([[
+        [
+            [1, 2, 1, 1],  # f1, n1 , t1 and t2 and t3 and t4
+            [3, 4, 1, 1],  # f1, n2 , t1 and t2 and t3 and t4
+            [2, 1, 1, 1]],  # f1, n3 , t1 and t2 and t3 and t4
+        [
+            [2, 2, 1, 1],  # f2, n1 , t1 and t2 and t3 and t4
+            [2, 2, 1, 1],  # f2, n2 , t1 and t2 and t3 and t4
+            [2, 4, 1, 1]]  # f2, n3 , t1 and t2 and t3 and t4
+    ]]).type('torch.FloatTensor').cpu()
 
-    def test_discriminator_reshaping(self):
-        """ Make sure that the reshaping operation for the discriminator FF is valid
-        """
-        x = torch.tensor([
-            [
-                [1, 2, 3],
-                [4, 5, 6],
-            ],
-            [
-                [7, 8, 9],
-                [10, 11, 12],
-            ]
-        ])
+    A = torch.tensor([
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0]
+    ]).type('torch.FloatTensor')
 
-        # Not used
-        architecture = [
-            (2, 6, 9, 7, 2),
-            (7, 6, 5, 4, 2)
+    # (c_in, c_out, spec_out, out, kernel)
+    architecture = [
+        (2, 6, 12, 12, 2)
+    ]
+    tig = TemporalInfoGraph(architecture=architecture,
+                            A=A, discriminator_layer=False)
+    gbl, lcl = tig(X)
+    assert tuple(gbl.shape) == (1, 12)  # (num_graphs, emb_dim)
+    assert tuple(lcl.shape) == (1, 12, 3)  # (num_graphs, emb_dim, num_nodes)
+
+
+def test_discriminator_reshaping():
+    """ Make sure that the reshaping operation for the discriminator FF is valid
+    """
+    x = torch.tensor([
+        [
+            [1, 2, 3],
+            [4, 5, 6],
+        ],
+        [
+            [7, 8, 9],
+            [10, 11, 12],
         ]
-        tig = TemporalInfoGraph(architecture=architecture)
+    ])
 
-        self.assertTrue(torch.equal(
-            x, tig.reshape_2d_3d(tig.reshape_3d_2d(x), x.shape)))
+    # Not used
+    architecture = [
+        (2, 6, 12, 12, 2),
+        (12, 24, 24, 24, 2)
+    ]
+    tig = TemporalInfoGraph(architecture=architecture)
 
-    def test_tig_encoder_wo_discr_layer(self):
-        """
-        """
-        X = torch.tensor([[
-            [
-                [1, 2, 1, 1],  # f1, n1 , t1 and t2 and t3 and t4
-                [3, 4, 1, 1],  # f1, n2 , t1 and t2 and t3 and t4
-                [2, 1, 1, 1]],  # f1, n3 , t1 and t2 and t3 and t4
-            [
-                [2, 2, 1, 1],  # f2, n1 , t1 and t2 and t3 and t4
-                [2, 2, 1, 1],  # f2, n2 , t1 and t2 and t3 and t4
-                [2, 4, 1, 1]]  # f2, n3 , t1 and t2 and t3 and t4
-        ]]).type('torch.FloatTensor').cpu()
+    assert torch.equal(x, tig.reshape_2d_3d(tig.reshape_3d_2d(x), x.shape))
 
-        A = torch.tensor([
-            [0, 1, 0],
-            [1, 0, 1],
-            [0, 1, 0]
-        ]).type('torch.FloatTensor')
 
-        # (c_in, c_out, spec_out, out, kernel)
-        architecture = [
-            (2, 6, 9, 7, 2)
-        ]
-        tig = TemporalInfoGraph(architecture=architecture,
-                                A=A, discriminator_layer=False)
+def test_tig_encoder_wo_discr_layer():
+    """ Test the dimensions withoit discriminator layer.
+    """
+    X = torch.tensor([[
+        [
+            [1, 2, 1, 1],  # f1, n1 , t1 and t2 and t3 and t4
+            [3, 4, 1, 1],  # f1, n2 , t1 and t2 and t3 and t4
+            [2, 1, 1, 1]],  # f1, n3 , t1 and t2 and t3 and t4
+        [
+            [2, 2, 1, 1],  # f2, n1 , t1 and t2 and t3 and t4
+            [2, 2, 1, 1],  # f2, n2 , t1 and t2 and t3 and t4
+            [2, 4, 1, 1]]  # f2, n3 , t1 and t2 and t3 and t4
+    ]]).type('torch.FloatTensor').cpu()
 
-        gbl, lcl = tig(X, A)
-        self.assertEqual(tuple(gbl.shape), (1, 7))  # (num_graphs, emb_dim)
-        # (num_graphs, emb_dim, num_nodes)
-        self.assertEqual(tuple(lcl.shape), (1, 7, 3))
+    A = torch.tensor([
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0]
+    ]).type('torch.FloatTensor')
 
-        # torch.set_printoptions(precision=10, sci_mode=False)
-        # local_shape = lcl.shape
-        # print(lcl.detach())
-        # print(lcl.detach().view(-1, -1), lcl.detach().reshape(-1, local_shape[1]).shape)
-        # print(gbl.detach())
+    # (c_in, c_out, spec_out, out, kernel)
+    architecture = [
+        (2, 6, 12, 12, 2)
+    ]
+    tig = TemporalInfoGraph(architecture=architecture,
+                            A=A, discriminator_layer=False)
 
-        #### Check Global Repr ####
-        self.assertTrue(torch.allclose(gbl.detach(), torch.tensor([
-            [-0.0000061101, 0.4065242708, 0.5743240714, 0.6953476071,
-                0.9662133455, 0.3790444136, 0.4473923445]
-        ]).type(torch.float32)))
+    gbl, lcl = tig(X)
+    assert tuple(gbl.shape) == (1, 12)  # (num_graphs, emb_dim)
+    assert tuple(lcl.shape) == (1, 12, 3)  # (num_graphs, emb_dim, num_nodes)
 
-        #### Check Local Repr ####
-        self.assertTrue(torch.allclose(lcl.detach(),
-                                       torch.tensor([[[0.0000000000, -0.0000122202],
-                                                      [0.0000000000, 0.8130485415],
-                                                      [1.1487964392, -
-                                                          0.0001483500],
-                                                      [1.3908934593, -
-                                                          0.0001982756],
-                                                      [1.9325233698, -
-                                                          0.0000967079],
-                                                      [0.4877631962, 0.2703256309],
-                                                      [-0.0000818149, 0.8948665261]]]).type(torch.float32)))
+    # torch.set_printoptions(precision=10, sci_mode=False)
 
-    def test_tig_encoder_2layers(self):
-        """
-        """
-        X = torch.rand(3, 2, 4, 10).type('torch.FloatTensor').cpu()
+    #### Check Global Repr ####
+    # result = torch.tensor([
+    #     [0.0000000000, 0.2619505823, 0.5360082984, 0.7373406291, 0.9563336372,
+    #      0.1766242385, 0.4704684317]
+    # ])
+    # assert torch.allclose(gbl.detach(), result)
 
-        A = torch.tensor([
-            [0, 1, 0, 0],
-            [1, 0, 1, 0],
-            [0, 1, 0, 0],
-            [0, 1, 0, 0]
-        ]).type('torch.FloatTensor')
+    # #### Check Local Repr ####
+    # result = torch.tensor([[[0.0000000000, 0.0000000000, 0.0000000000],
+    #                         [0.0000000000, 0.7858517766, 0.0000000000],
+    #                         [0.0000000000, 0.5193455219, 1.0886794329],
+    #                         [0.0000000000, 1.7144789696, 0.4975428283],
+    #                         [0.7925892472, 1.2838224173, 0.7925892472],
+    #                         [0.0000000000, 0.0000000000, 0.5298727155],
+    #                         [0.0000000000, 1.4114053249, 0.0000000000]]])
+    # assert torch.allclose(lcl.detach(), result)
 
-        # (c_in, c_out, spec_out, out, kernel)
-        architecture = [
-            (2, 6, 9, 7, 2),
-            (7, 6, 5, 4, 2)
-        ]
-        tig = TemporalInfoGraph(architecture=architecture,
-                                A=A, discriminator_layer=False)
 
-        gbl, lcl = tig(X, A)
+def test_tig_encoder_2layers():
+    """ Test the output dimensions for a 2 layer encoder.
+    """
+    # (batch_size, features, nodes, time)
+    X = torch.rand(3, 2, 4, 10).type('torch.FloatTensor').cpu()
 
-        self.assertEqual(gbl.shape, (3, 4))  # (num_graphs, emb_dim)
-        # (num_graphs, emb_dim, num_nodes)
-        self.assertEqual(lcl.shape, (3, 4, 4))
+    A = torch.tensor([
+        [0, 1, 0, 0],
+        [1, 0, 1, 0],
+        [0, 1, 0, 0],
+        [0, 1, 0, 0]
+    ]).type('torch.FloatTensor')
 
-    def test_tig_encoder(self):
-        """
-        """
-        X = torch.tensor([[
-            [
-                [1, 2, 1, 1],  # f1, n1 , t1 and t2 and t3 and t4
-                [3, 4, 1, 1],  # f1, n2 , t1 and t2 and t3 and t4
-                [2, 1, 1, 1]],  # f1, n3 , t1 and t2 and t3 and t4
-            [
-                [2, 2, 1, 1],  # f2, n1 , t1 and t2 and t3 and t4
-                [2, 2, 1, 1],  # f2, n2 , t1 and t2 and t3 and t4
-                [2, 4, 1, 1]]  # f2, n3 , t1 and t2 and t3 and t4
-        ]]).type('torch.FloatTensor').cpu()
+    # (c_in, c_out, spec_out, out, kernel)
+    architecture = [
+        (2, 6, 12, 12, 2),
+        (12, 24, 24, 24, 2)
+    ]
+    tig = TemporalInfoGraph(architecture=architecture,
+                            A=A, discriminator_layer=False)
 
-        A = torch.tensor([
-            [0, 1, 0],
-            [1, 0, 1],
-            [0, 1, 0]
-        ]).type('torch.FloatTensor')
+    gbl, lcl = tig(X)
 
-        # (c_in, c_out, spec_out, out, kernel)
-        architecture = [
-            (2, 6, 9, 7, 2)
-        ]
-        tig = TemporalInfoGraph(architecture=architecture, A=A)
+    assert gbl.shape == (3, 24)  # (num_graphs, emb_dim)
+    assert lcl.shape == (3, 24, 4)  # (num_graphs, emb_dim, num_nodes)
 
-        gbl, lcl = tig(X)
-        self.assertEqual(tuple(gbl.shape), (1, 7))  # (num_graphs, emb_dim)
-        # (num_graphs, emb_dim, num_nodes)
-        self.assertEqual(tuple(lcl.shape), (1, 7, 3))
 
-        # torch.set_printoptions(precision=10, sci_mode=False)
-        # print(lcl.detach())
-        # print(gbl.detach())
+def test_tig_encoder():
+    """ Test the encoder dimensions with an one layer architecture.
+    """
+    X = torch.tensor([[
+        [
+            [1, 2, 1, 1],  # f1, n1 , t1 and t2 and t3 and t4
+            [3, 4, 1, 1],  # f1, n2 , t1 and t2 and t3 and t4
+            [2, 1, 1, 1]],  # f1, n3 , t1 and t2 and t3 and t4
+        [
+            [2, 2, 1, 1],  # f2, n1 , t1 and t2 and t3 and t4
+            [2, 2, 1, 1],  # f2, n2 , t1 and t2 and t3 and t4
+            [2, 4, 1, 1]]  # f2, n3 , t1 and t2 and t3 and t4
+    ]]).type('torch.FloatTensor').cpu()
 
-        #### Check Global Repr ####
-        self.assertTrue(torch.allclose(gbl.detach(), torch.tensor([
-            [0.5525305271,  0.1178621352,  0.9339270592,  0.0617463589,
-             0.1626448333, -0.4789645970, -0.2577761412]
-        ]).type(torch.float32)))
+    A = torch.tensor([
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0]
+    ]).type('torch.FloatTensor')
 
-        #### Check Local Repr ####
-        self.assertTrue(torch.allclose(lcl.detach(),
-                                       torch.tensor([[[-0.4371549487,  0.3847233951],
-                                                      [0.6391321421,  1.2286182642],
-                                                      [-0.2881792188, -
-                                                          0.7627856731],
-                                                      [0.3141667843, -
-                                                          0.2593720555],
-                                                      [0.3146840930,  0.2644939125],
-                                                      [-0.7058595419,
-                                                          0.4369351864],
-                                                      [-0.7328739762,  1.1063418388]]]).type(torch.float32)))
+    # (c_in, c_out, spec_out, out, kernel)
+    architecture = [
+        (2, 6, 12, 12, 2)
+    ]
+    tig = TemporalInfoGraph(architecture=architecture, A=A)
 
-    def test_tig_res_e_weights(self):
-        """
-        """
-        X = torch.tensor([[
-            [
-                [1, 2, 1, 1],  # f1, n1 , t1 and t2 and t3 and t4
-                [3, 4, 1, 1],  # f1, n2 , t1 and t2 and t3 and t4
-                [2, 1, 1, 1]],  # f1, n3 , t1 and t2 and t3 and t4
-            [
-                [2, 2, 1, 1],  # f2, n1 , t1 and t2 and t3 and t4
-                [2, 2, 1, 1],  # f2, n2 , t1 and t2 and t3 and t4
-                [2, 4, 1, 1]]  # f2, n3 , t1 and t2 and t3 and t4
-        ]]).type('torch.FloatTensor').cpu()
+    gbl, lcl = tig(X)
+    assert tuple(gbl.shape) == (1, 12)  # (num_graphs, emb_dim)
+    assert tuple(lcl.shape) == (1, 12, 3)  # (num_graphs, emb_dim, num_nodes)
 
-        A = torch.tensor([
-            [0, 1, 0],
-            [1, 0, 1],
-            [0, 1, 0]
-        ]).type('torch.FloatTensor')
+    # torch.set_printoptions(precision=10, sci_mode=False)
 
-        # (c_in, c_out, spec_out, out, kernel)
-        architecture = [
-            (2, 6, 9, 7, 2)
-        ]
-        tig = TemporalInfoGraph(architecture=architecture, A=A, residual=True, edge_weights=True)
+    #### Check Global Repr ####
+    # resutl = torch.tensor([
+    #     [0.5572497249, 0.1188270152, 0.9377672672, 0.0637857318,
+    #      0.1603138745, -0.4778861105, -0.2595149279]
+    # ])
+    # assert torch.allclose(gbl.detach(), resutl)
 
-        gbl, lcl = tig(X)
-        self.assertEqual(tuple(gbl.shape), (1, 7))  # (num_graphs, emb_dim)
-        # (num_graphs, emb_dim, num_nodes)
-        self.assertEqual(tuple(lcl.shape), (1, 7, 3))
+    # #### Check Local Repr ####
+    # result = torch.tensor([[[0.5909340382, -0.2401582003, -0.4284988344],
+    #                         [1.1895797253, 0.9177638888, 0.8900489807],
+    #                         [-0.3513569832, -0.6072705984, -0.6237034798],
+    #                         [-0.0387212709, -0.0507152379, 0.1812662780],
+    #                         [-0.1434196979, 0.6819714308, 0.4132525027],
+    #                         [0.5097138882, -0.6692208052, -0.2487553656],
+    #                         [0.3655797243, -0.0922359824, 0.2696639299]]])
+    # assert torch.allclose(lcl.detach(), result)
 
-        # torch.set_printoptions(precision=10, sci_mode=False)
-        # print(lcl.detach())
-        # print(gbl.detach())
+
+def test_tig_res_e_weights():
+    """ Test the encoder with residual layer and edge weights.
+    """
+    X = torch.tensor([[
+        [
+            [1, 2, 1, 1],  # f1, n1 , t1 and t2 and t3 and t4
+            [3, 4, 1, 1],  # f1, n2 , t1 and t2 and t3 and t4
+            [2, 1, 1, 1]],  # f1, n3 , t1 and t2 and t3 and t4
+        [
+            [2, 2, 1, 1],  # f2, n1 , t1 and t2 and t3 and t4
+            [2, 2, 1, 1],  # f2, n2 , t1 and t2 and t3 and t4
+            [2, 4, 1, 1]]  # f2, n3 , t1 and t2 and t3 and t4
+    ]]).type('torch.FloatTensor').cpu()
+
+    A = torch.tensor([
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0]
+    ]).type('torch.FloatTensor')
+
+    # (c_in, c_out, spec_out, out, kernel)
+    architecture = [
+        (2, 6, 12, 12, 2)
+    ]
+    tig = TemporalInfoGraph(architecture=architecture,
+                            A=A, residual=True, edge_weights=True)
+
+    gbl, lcl = tig(X)
+    assert (tuple(X.shape) == (1, 2, 3, 4))  # (batch, features, nodes, time)
+    assert (tuple(gbl.shape) == (1, 12))  # (num_graphs, emb_dim)
+    assert (tuple(lcl.shape) == (1, 12, 3))  # (num_graphs, emb_dim, num_nodes)
+
+
+def test_temp_cov_all_features():
+    """ Test the calculation of the temporal convolution (over all features).
+    """
+    # Predefined example tensor for verification
+    X = torch.tensor([[
+        [[1, 2, 1, 1],   # f1, n1 , t1 and t2 and t3 and t4
+         [3, 4, 1, 1],   # f1, n2 , t1 and t2 and t3 and t4
+         [2, 1, 1, 1]],  # f1, n3 , t1 and t2 and t3 and t4
+        [[2, 2, 1, 1],   # f2, n1 , t1 and t2 and t3 and t4
+         [2, 2, 1, 1],   # f2, n2 , t1 and t2 and t3 and t4
+         [2, 4, 1, 1]]   # f2, n3 , t1 and t2 and t3 and t4
+    ]]).type('torch.FloatTensor').cpu()
+
+    assert X.shape == (1, 2, 3, 4)
+
+    c_in = 2
+    c_out = 1
+    weights = torch.ones((c_out, 2, 1, 2)).type('torch.FloatTensor')
+
+    tempConv = TemporalConvolution(
+        c_in=2, c_out=1, weights=weights, debug=True, per_feature=False).cpu()
+
+    yhat = tempConv(X)
+
+    result = torch.tensor([[[[7., 6., 4.],
+                             [11., 8., 4.],
+                             [9., 7., 4.]]]])
+    assert torch.allclose(yhat, result)
+
+
+def test_temp_cov_per_features():
+    """ Test the calculation of the temporal convolution (per feature).
+    """
+    # Predefined example tensor for verification
+    X = torch.tensor([[
+        [[1, 2, 1, 1],   # f1, n1 , t1 and t2 and t3 and t4
+         [3, 4, 1, 1],   # f1, n2 , t1 and t2 and t3 and t4
+         [2, 1, 1, 1]],  # f1, n3 , t1 and t2 and t3 and t4
+        [[2, 2, 1, 1],   # f2, n1 , t1 and t2 and t3 and t4
+         [2, 2, 1, 1],   # f2, n2 , t1 and t2 and t3 and t4
+         [2, 4, 1, 1]]   # f2, n3 , t1 and t2 and t3 and t4
+    ]]).type('torch.FloatTensor').cpu()
+
+    assert X.shape == (1, 2, 3, 4)
+
+    c_in = 2
+    c_out = c_in
+    weights = torch.ones((c_out, 1, 1, 2)).type('torch.FloatTensor')
+
+    tempConv = TemporalConvolution(
+        c_in, c_out, weights=weights, debug=True, per_feature=True).cpu()
+
+    yhat = tempConv(X)
+
+    result = torch.tensor([[
+        [[3., 3., 2.],
+         [7., 5., 2.],
+         [3., 2., 2.]],
+        [[4., 3., 2.],
+         [4., 3., 2.],
+         [6., 5., 2.]]]])
+    assert torch.allclose(yhat, result)
+
+
+def test_spec_cov():
+    """ Test the calculation of the spectral convolution.
+    """
+    # Predefined example tensor for verification
+    X = torch.tensor([[
+        [[1, 2, 1, 1],   # f1, n1 , t1 and t2 and t3 and t4
+         [3, 4, 1, 1],   # f1, n2 , t1 and t2 and t3 and t4
+         [2, 1, 1, 1]],  # f1, n3 , t1 and t2 and t3 and t4
+        [[2, 2, 1, 1],   # f2, n1 , t1 and t2 and t3 and t4
+         [2, 2, 1, 1],   # f2, n2 , t1 and t2 and t3 and t4
+         [2, 4, 1, 1]]   # f2, n3 , t1 and t2 and t3 and t4
+    ]]).type('torch.FloatTensor').cpu()
+
+    assert X.shape == (1, 2, 3, 4)
+
+    A = torch.tensor([
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0]
+    ]).type('torch.FloatTensor').cpu()
+
+    assert A.shape == (X.shape[2], X.shape[2])
+
+    # We need a matrix to have proper dimensions for the permutation
+    weights = torch.tensor([1., 1.]).type('torch.FloatTensor').unsqueeze(dim=1)
+
+    specConv = SpectralConvolution(c_in=2, c_out=1, weights=weights,
+                                   debug=True, A=A).cpu()
+
+    yhat = specConv(X)
+
+    result = torch.tensor([[[[8., 10., 4., 4.],
+                             [12., 15., 6., 6.],
+                             [9., 11., 4., 4.]]]])
+    assert torch.allclose(yhat, result)
+
+
+def test_spec_conv_dim():
+    """ Test the dimensions of the spectral convolution.
+    """
+    # Predefined example tensor for verification
+    X = torch.tensor([[
+        [[1, 2, 1, 1],   # f1, n1 , t1 and t2 and t3 and t4
+         [3, 4, 1, 1],   # f1, n2 , t1 and t2 and t3 and t4
+         [2, 1, 1, 1]],  # f1, n3 , t1 and t2 and t3 and t4
+        [[2, 2, 1, 1],   # f2, n1 , t1 and t2 and t3 and t4
+         [2, 2, 1, 1],   # f2, n2 , t1 and t2 and t3 and t4
+         [2, 4, 1, 1]]   # f2, n3 , t1 and t2 and t3 and t4
+    ]]).type('torch.FloatTensor').cpu()
+
+    assert X.shape == (1, 2, 3, 4)
+
+    A = torch.tensor([
+        [0, 1, 0],
+        [1, 0, 1],
+        [0, 1, 0]
+    ]).type('torch.FloatTensor').cpu()
+
+    assert A.shape == (X.shape[2], X.shape[2])
+
+    specConv = SpectralConvolution(c_in=2, c_out=16, A=A).cpu()
+
+    yhat = specConv(X)
+
+    assert yhat.shape == (1, 16, 3, 4)

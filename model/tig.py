@@ -48,8 +48,6 @@ class TemporalConvolution(nn.Module):
         
         padding = ((self.kernel[1] - 1) // 2, 0)
         self.tcn = nn.Sequential(
-            # nn.BatchNorm2d(self.c_in),
-            nn.ReLU(),
             nn.Conv2d(
                 self.c_in,
                 self.c_out,
@@ -57,21 +55,20 @@ class TemporalConvolution(nn.Module):
                 (1, 1),
                 padding,
             ),
-            nn.BatchNorm2d(self.c_out),
             nn.Dropout(0.5),
         )
 
         #### TO DEVICE #####
         # self.conv = self.conv.to(self.device)
 
-        self.relu = nn.ReLU()
+        self.relu = nn.LeakyReLU()
 
     def forward(self, X: torch.Tensor):
 
         # In: (batch, features, time, nodes)
         X = self.tcn(X)
 
-        return self.relu(X)
+        return X
 
 
 class SpectralConvolution(nn.Module):
@@ -82,20 +79,9 @@ class SpectralConvolution(nn.Module):
 
         self.c_in = c_in
         self.c_out = c_out
-        self.kernel = kernel
-        self.weights = weights
-        self.debug = debug
         self.A = A
 
-        # # # Weights (or kernel matrix)
-        # if self.weights is not None:
-        #     # self.W = torch.nn.Parameter(torch.tensor(self.weights))
-        #     self.W = weights
-        # else:
-        #     self.W = torch.nn.Parameter(torch.rand((self.c_in, self.c_out)))
-
-        # self.bn2 = nn.BatchNorm2d(self.c_out)
-        self.kernel_size = 3 # Spectral Kernel
+        # self.kernel_size = 3 # Spectral Kernel
         self.conv = nn.Conv2d(self.c_in ,
                               self.c_out,
                               kernel_size=1)
@@ -107,30 +93,24 @@ class SpectralConvolution(nn.Module):
         if A is None:
             A = self.A
 
-        # # Adjacency matrix multiplication in time!
-        # assert len(self.W.shape) == 2
-
-        # X = self.conv(X)
-
-        # n, kc, t, v = X.size()
-        # X = X.view(n, self.kernel_size, kc // self.kernel_size, t, v)
-
-        # In: (batch_size, features, time, node), Out: (batch, features, nodes, time)
-        # H = torch.einsum("lkjm, ji -> lmki", [X.permute(0, 2, 3, 1), A]) # Dim (batch, features, nodes, time)
         X = torch.einsum("ntjc, ji -> ncti", [X.permute(0, 2, 3, 1), A])
         # In: Out: (batch_size, features, nodes, time)
         # X = torch.matmul(X, self.W).permute(0, 3, 1, 2) # This is much more expensive than the convolutional
 
         X = self.conv(X) # Convolutiom is about 10x faster!!!
-        return self.activation(X)
+
+        return X
 
 
 class TemporalInfoGraph(nn.Module):
 
 
-    def __init__(self, A: torch.Tensor = None):
+    def __init__(self, architecture: list = None, A: torch.Tensor = None,
+                 mode: str = "encode"):
 
         super().__init__()
+
+        self.mode = mode
 
         A = torch.tensor(get_normalized_adj(A), dtype=torch.float32).to("cuda")
         self.register_buffer('A', torch.tensor(A))
@@ -141,40 +121,48 @@ class TemporalInfoGraph(nn.Module):
 
         self.layers = []
         self.res_layers = []
+        self.bn_layers = []
 
-        # First Layer
-        c_in, c_out, spec_out, out = (2, 32, 32, 32)
-        tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out, kernel=9)
-        specConv = nn.Sequential(SpectralConvolution(c_in=c_out, c_out=spec_out, A=self.A))
-        tempConv2 = TemporalConvolution(c_in=spec_out, c_out=out, kernel=9)
+        if architecture is None:
+            # Fits in 4 GB Memory
+            architecture = [
+                (2, 64, 64, 128),
+                (128, 128, 128, 256)
+            ]
 
-        self.layers.append(nn.Sequential(tempConv1, specConv, tempConv2, nn.BatchNorm2d(out), nn.LeakyReLU()))
+        for c_in, c_out, spec_out, out  in architecture:
 
-        if (c_in == out):
-            self.res_layers.append(nn.Identity())
-        else:
-            self.res_layers.append(nn.Sequential(nn.Conv2d(c_in, out, kernel_size=1),
-                                   nn.BatchNorm2d(out)))
-            
-        # Second Layer
-        c_in, c_out, spec_out, out = (32, 64, 64, 256)
-        tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out, kernel=9)
-        specConv = nn.Sequential(SpectralConvolution(c_in=c_out, c_out=spec_out, A=self.A))
-        tempConv2 = TemporalConvolution(c_in=spec_out, c_out=out, kernel=9)
-        
-        self.layers.append(nn.Sequential(tempConv1, specConv, tempConv2, nn.BatchNorm2d(out), nn.LeakyReLU()))
+            tempConv1 = TemporalConvolution(c_in=c_in, c_out=c_out, kernel=9)
+            specConv = SpectralConvolution(c_in=c_out, c_out=spec_out, A=self.A)
+            tempConv2 = TemporalConvolution(c_in=spec_out, c_out=out, kernel=9)
 
-        if (c_in == out):
-            self.res_layers.append(nn.Identity())
-        else:
-            self.res_layers.append(nn.Sequential(nn.Conv2d(c_in, out, kernel_size=1),
-                                   nn.BatchNorm2d(out)))
+            self.layers.append(nn.Sequential(
+                tempConv1,
+                nn.BatchNorm2d(c_out),
+                nn.LeakyReLU(),
+                specConv,
+                nn.BatchNorm2d(spec_out),
+                nn.LeakyReLU(),
+                tempConv2,
+                nn.LeakyReLU()
+            ))
+
+            if c_in == out:
+                self.res_layers.append(nn.Identity())
+            else:
+                self.res_layers.append(nn.Conv2d(c_in, out, kernel_size=1))
+
+            # Final batch normalization after sandwich layer
+            self.bn_layers.append(nn.BatchNorm2d(out))
 
         self.convLayers = nn.Sequential(*self.layers)
         self.res_layers = nn.Sequential(*self.res_layers)
+        self.bn_layers = nn.Sequential(*self.bn_layers)
+
         self.relu = nn.LeakyReLU()
 
-        self.fcn = nn.Conv2d(256, 49, kernel_size=1)
+        if self.mode == "classify":
+            self.fcn = nn.Conv2d(256, 50, kernel_size=1)
 
     def forward(self, X: torch.Tensor):
 
@@ -186,35 +174,36 @@ class TemporalInfoGraph(nn.Module):
         X = X.permute(0, 1, 3, 4, 2).contiguous()
         X = X.view(N * M, C, T, V)
 
-
-        # N, C, V, T = X.shape
-
-        # #### Data Normalization ####
-        # if hasattr(self, "data_norm"):
-        #     X = X.reshape(N, V * C, T)  # Flatten to create large feature matrix
-        #     X = self.data_norm(X)
-        #     # Convert back to original format
-        #     X = X.reshape(N, C, V, T)
+        X = self.relu(X)
 
         # In: (batch_size, features, time, nodes)
-        for layer, res_layer in zip(self.convLayers, self.res_layers):
+        for layer, res_layer, bn in zip(self.convLayers, self.res_layers, self.bn_layers):
             res = res_layer(X)
             X = layer(X)
-            X = self.relu(X + res)
+            X = bn(X + res)
+            X = self.relu(X)
 
-        # Average over tima
-        # In: (batch, features, time, nodes, persons)
-        X = F.avg_pool2d(X, (X.size()[2], 1))
-        X = X.view(N, M, -1, V).mean(dim=1)
+        if self.mode == "encode":
+            # Average over time
+            # In: (batch * persons, features, time, nodes), Out:(batch * persons, features, 1, nodes)
+            X = F.avg_pool2d(X, (X.size()[2], 1))
+            # Average over persons
+            # In: (batch, persons, features, 1, nodes), Out:(batch, 1, features, 1, nodes)
+            X = X.view(N, M, -1, V).mean(dim=1)
 
-        return torch.squeeze(X.mean(dim=-1)), torch.squeeze(X)
+            return torch.squeeze(X.mean(dim=-1)), torch.squeeze(X)
 
-        # global pooling
-        # # Average over nodes and time
-        # X = F.avg_pool2d(X, X.size()[2:])
-        # # Average over persons
-        # X = X.view(N, M, -1, 1, 1).mean(dim=1)
+        elif self.mode == "classify":
+            # Average over nodes and time
+            # In: (batch * persons, features, time, nodes), Out:(batch * persons, features, 1, 1)
+            X = F.avg_pool2d(X, X.size()[2:])
+            # Average over persons
+            # In: (batch, persons, features, 1, nodes), Out:(batch, 1, features, 1, 1)
+            X = X.view(N, M, -1, 1, 1).mean(dim=1)
 
-        # X = self.fcn(X)
-        # X = X.view(X.size(0), -1)
-        # return X
+            # In: (batch, 1, features, 1, 1), Out:(batch, num classes, 1, 1, 1)
+            X = self.fcn(X)
+
+            # Squeezing alternative
+            return X.view(X.size(0), -1)
+

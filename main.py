@@ -21,7 +21,7 @@ from tqdm import trange
 #pylint: disable=import-error
 from tracker import Tracker
 from experiments import  experiment
-from config.config import log
+# from config.config import log
 from data.tig_data_set import TIGDataset
 from experiments import Experiment
 from baseline import train_baseline, get_model
@@ -66,6 +66,7 @@ parser.add_argument('--data', dest='data', default="stgcn_50_classes",
 #                     help='Prepare data.')
 
 args = parser.parse_args()
+log = create_logger(path)
 
 #### Load Configuration ####
 name = args.name
@@ -80,13 +81,11 @@ if args.config is not None:
             name = args.name
             config = json.load(file)
     else:
-        with open("./experiments/config_repo.yml") as file:
+        with open("./config.yml") as file:
             name += f"_{args.config}"
             config = yaml.load(file, Loader=yaml.FullLoader)[args.config]
 else:
-    with open("./experiments/config_repo.yml") as file:
-        name += "_standard"
-        config = yaml.load(file, Loader=yaml.FullLoader)["standard"]
+    log.error("No config provided.")
 
 #### Execution ####
 if args.train:
@@ -102,16 +101,17 @@ if args.train:
     path = f"./output/{date}_{name}/"
     Path(path).mkdir(parents=True, exist_ok=True)
 
-    log = create_logger(path)
+    
+    for i in range(5):
+        log.info(f"Train loop: {i}")
+        Path(path + f"{i}").mkdir(parents=True, exist_ok=True)
 
-    if args.model == "tig":
-        train_tig(config, path)
-    elif args.model == "stgcn":
-        for i in range(10):
-            log.info(f"Train loop: {i}")
+        if args.model == "tig":
+            train_tig(config, path + f"/{i}/")
+        elif args.model == "stgcn":
             train_stgcn(config, path + f"/{i}/")
-    else:
-        log.info(f"Model not found ({args.model })!")
+        else:
+            log.info(f"Model not found ({args.model })!")
 
     log.info(f"Training done. Output path: {path}")
 

@@ -46,8 +46,8 @@ def train_stgcn(config, path):
         "layout": 'openpose',
         "strategy": 'spatial'
     }
-    # model = TemporalInfoGraph(A=data.A[:18, :18])
-    model = ST_GCN_18(2, 49, graph_cfg, edge_importance_weighting=False)
+    model = TemporalInfoGraph(A=data.A[:18, :18])
+    # model = ST_GCN_18(2, 49, graph_cfg, edge_importance_weighting=False)
 
     # if "print_summary" in config and config["print_summary"]:
     #     summary(model.to("cuda"), input_size=(2, data.A.shape[0], 300),
@@ -59,7 +59,7 @@ def train_stgcn(config, path):
 
     loss_fn = nn.CrossEntropyLoss()
 
-    train_cfg = config["encoder_training"]
+    train_cfg = config["training"]
     try:
         optimizer = getattr(optim, train_cfg["optimizer_name"])(
                     model.parameters(),
@@ -146,7 +146,7 @@ def train_stgcn(config, path):
                 batch_x = batch_x.type("torch.FloatTensor").to("cuda")
                 N, T, V, C = batch_x.size()
                 batch_x = batch_x.permute(0, 3, 1, 2).view(N, C, T, V//2, 2)
-                
+
                 # batch_x = batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1).to("cuda")
 
                 yhat = model(batch_x.to("cuda"))
@@ -174,7 +174,7 @@ def train_stgcn(config, path):
         
         ########################################################################
 
-        epoch_pbar.set_description(f'Epochs ({model.__class__.__name__})' +
+        epoch_pbar.set_description(f'Epochs ({model.__class__.__name__}) ' +
                                    f'Mean Top1: {"%.2f"%np.mean(epoch_val_metric["top-1"])}, ' +
                                    f'Mean Top5: {"%.2f"%np.mean(epoch_val_metric["top-5"])}, ' )
 
@@ -208,7 +208,7 @@ def train_tig(config, path):
     if "loss" in config and config["loss"] == "bce":
         loss_fn = bce_loss
 
-    train_cfg = config["encoder_training"]
+    train_cfg = config["training"]
     try:
         optimizer = getattr(optim, train_cfg["optimizer_name"])(
                     model.parameters(),

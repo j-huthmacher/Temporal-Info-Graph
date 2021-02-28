@@ -31,6 +31,8 @@ small_complex_encoder:
     shuffle: True
   emb_tracking: 10
   loss: bce
+  model: 
+    multi_scale: False
   training:
     verbose: True
     n_epochs: 200

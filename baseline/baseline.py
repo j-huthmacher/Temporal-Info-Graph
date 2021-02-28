@@ -8,6 +8,7 @@ from sklearn.base import BaseEstimator
 # from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import SGDClassifier
+from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import accuracy_score
 
 
@@ -16,6 +17,8 @@ def get_model(model, **params):
         return SGDClassifier(loss='hinge', random_state=0, **params)
     elif model == "logistic regression":
         return SGDClassifier(loss='log', random_state=0, **params)
+    elif model == "mlp":
+        return MLPClassifier(max_iter=50, random_state=0, **params)
 
 def train_baseline(data, num_epochs=2, baseline="svm", **baseline_args):
     """ Function to train the selected baseline on the given data.

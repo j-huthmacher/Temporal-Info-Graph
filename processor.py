@@ -23,8 +23,56 @@ from model.st_gcn_aaai18.stgcn_model import ST_GCN_18
 from model.loss import jensen_shannon_mi, bce_loss
 from data.tig_data_set import TIGDataset
 
+from baseline import get_model
+
 from datetime import datetime
 
+def train_baseline(x, y, baseline = "svm"):
+    
+    x_train,x_test, y_train, y_test = train_test_split(x, y, random_state=0)
+
+    model = get_model(baseline, verbose=0)
+    model.fit(x_train, y_train)
+
+    if baseline == "svm":
+        yhat = model.decision_function(x_test)
+    elif baseline == "mlp":
+        yhat = model.predict_proba(x_test)
+    
+    try:
+        return top_k_accuracy_score(y_test, yhat, k = 1), top_k_accuracy_score(y_test, yhat, k = 5)
+    except:
+        return accuracy_score(y_test, model.predict(x_test)), -1
+
+def run_baseline(data_cfg, path, baseline="svm", num_iter=10):
+    #### Tracking Location ####
+    log = logging.getLogger('TIG_Logger')
+    log.info(f"Output path: " + path)
+    
+    data = TIGDataset(**data_cfg)  
+    
+    x = np.array(data.x).reshape(np.array(data.x).shape[0], -1)
+    y = np.array(data.y).astype(int)
+    
+    top5 = []
+    top1 = []
+    log.info("Start baseline training")    
+    
+    pbar = trange(num_iter, desc="Top1: - | Top2: - ")
+    
+    for i in pbar:
+        t1, t5 = train_baseline(x, y, baseline)
+        top1.append(t1)
+        top5.append(t5)
+        pbar.set_description(f"Top1: {np.mean(top1)*100} | Top2: {np.mean(top5)*100} ")
+    
+    log.info("Save baseline accuracies...")
+    np.save(path + f"top1_{baseline}.npy", top1)
+    np.save(path + f"top5_{baseline}.npy", top5)
+    
+    return np.mean(top1)*100, np.std(top1)*100, np.mean(top5)*100, np.std(top5)*100
+
+    
 
 def train_stgcn(config, path):
     """
@@ -36,7 +84,12 @@ def train_stgcn(config, path):
 
     #### Data Set Up ####
     data = TIGDataset(**config["data"])
-    X_train, X_test, y_train, y_test = train_test_split(data.x, data.y, random_state=0)
+
+    train = data.stratify(num=2, num_samples=100, mode=1)
+    x = np.array(train)[:, 0]
+    y = np.array(train)[:, 1].astype(int)
+
+    X_train, X_test, y_train, y_test = train_test_split(x, y, random_state=0)
 
     train_loader = DataLoader(list(zip(X_train, y_train)), **config["loader"])
     val_loader = DataLoader(list(zip(X_test, y_test)), **config["loader"])
@@ -47,8 +100,9 @@ def train_stgcn(config, path):
         "strategy": 'spatial'
     }
     model_cfg = config["model"] if "model" in config else {}
+   
     model = TemporalInfoGraph(**model_cfg, mode="classify", A=data.A[:18, :18])
-    # model = ST_GCN_18(2, 49, graph_cfg, edge_importance_weighting=False)
+    # model = ST_GCN_18(2, 2, graph_cfg, edge_importance_weighting=False)
 
     # if "print_summary" in config and config["print_summary"]:
     #     summary(model.to("cuda"), input_size=(2, data.A.shape[0], 300),
@@ -56,7 +110,7 @@ def train_stgcn(config, path):
 
     model = model.to("cuda")
 
-    log.info(f"Model parameter: " + str(sum(p.numel() for p in model.parameters() if p.requires_grad)))
+    log.info("Model parameter: " + str(sum(p.numel() for p in model.parameters() if p.requires_grad)))
 
     loss_fn = nn.CrossEntropyLoss()
 
@@ -172,7 +226,7 @@ def train_stgcn(config, path):
         np.savez(path + "STGCN_val.metrics",
                  top1=epoch_val_metric["top-1"],
                  top5=epoch_val_metric["top-5"])
-        
+
         ########################################################################
 
         epoch_pbar.set_description(f'Epochs ({model.__class__.__name__}) ' +
@@ -194,7 +248,6 @@ def train_tig(config, path):
     data = TIGDataset(**config["data"])
 
     train = data.stratify(num=2, num_samples=100, mode=1)
-
     loader = DataLoader(train, **config["loader"])
 
     #### Model #####

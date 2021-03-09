@@ -11,7 +11,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import top_k_accuracy_score, accuracy_score
 from sklearn import preprocessing
 
-from tqdm import tqdm, trange
+from tqdm.auto import tqdm, trange
 
 import torch
 import torch.optim as optim
@@ -449,23 +449,23 @@ def evaluate(predictions: np.array, labels: np.array, mode: str = "top-k"):
 
 
 def encode(loader, path, model, verbose=True):
-    emb_x = np.array([])
-    emb_y = np.array([])
+    emb_x = []
+    emb_y = []
     with torch.no_grad():
-        for batch_x, batch_y in tqdm(loader, desc="Encode Data.", disable=(not verbose)):
+        model.eval()
+        for i, (batch_x, batch_y) in enumerate(tqdm(loader, desc="Encode Data.")):
             batch_x = batch_x.type("torch.FloatTensor").to("cuda")
             N, T, V, C = batch_x.size()
-            batch_x = batch_x.permute(0, 3, 1, 2).view(N, C, T, V//2, 2)
+            batch_x = batch_x.permute(0, 3, 1, 2).view(N, C, T, V // 2, 2)
             # batch_x = batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1)
             pred, _ = model(batch_x)
-            if emb_x.size:
-                emb_x = np.concatenate([emb_x, pred.detach().cpu().numpy()])
-            else:
-                emb_x = pred.detach().cpu().numpy()
 
-            if emb_y.size:
-                emb_y = np.concatenate([emb_y, batch_y.numpy()])
-            else:
-                emb_y = batch_y.numpy()
+            emb_x.append(pred.detach().cpu().numpy())        
+            emb_y.append(batch_y.numpy())
 
-        np.savez(path+"embeddings_full", x=emb_x, y=emb_y)
+        emb_x = np.concatenate(emb_x)
+        emb_y = np.concatenate(emb_y)
+
+        np.savez(path + "embeddings_full", x=emb_x, y=emb_y)
+    
+    return emb_x, emb_y

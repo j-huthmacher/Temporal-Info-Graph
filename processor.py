@@ -8,7 +8,8 @@ import logging
 import numpy as np 
 from sklearn import metrics
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import top_k_accuracy_score
+from sklearn.metrics import top_k_accuracy_score, accuracy_score
+from sklearn import preprocessing
 
 from tqdm import tqdm, trange
 
@@ -44,6 +45,7 @@ def train_baseline(x, y, baseline = "svm"):
     except:
         return accuracy_score(y_test, model.predict(x_test)), -1
 
+
 def run_baseline(data_cfg, path, baseline="svm", num_iter=10):
     #### Tracking Location ####
     log = logging.getLogger('TIG_Logger')
@@ -71,7 +73,6 @@ def run_baseline(data_cfg, path, baseline="svm", num_iter=10):
     np.save(path + f"top5_{baseline}.npy", top5)
     
     return np.mean(top1)*100, np.std(top1)*100, np.mean(top5)*100, np.std(top5)*100
-
     
 
 def train_stgcn(config, path):
@@ -85,10 +86,20 @@ def train_stgcn(config, path):
     #### Data Set Up ####
     data = TIGDataset(**config["data"])
 
-    train = data.stratify(num=2, num_samples=100, mode=1)
-    x = np.array(train)[:, 0]
-    y = np.array(train)[:, 1].astype(int)
+    if "stratify" in config:
+        train = data.stratify(**config["stratify"])#num=2, num_samples=100, mode=1)
+        x = np.array(train)[:, 0]
+        y = np.array(train)[:, 1].astype(int)
+    else:
+        x = data.x
+        y = data.y
 
+    num_classes = len(np.unique(y))
+
+    le = preprocessing.LabelEncoder()
+    y = le.fit_transform(y)
+
+    # Train test split
     X_train, X_test, y_train, y_test = train_test_split(x, y, random_state=0)
 
     train_loader = DataLoader(list(zip(X_train, y_train)), **config["loader"])
@@ -100,9 +111,10 @@ def train_stgcn(config, path):
         "strategy": 'spatial'
     }
     model_cfg = config["model"] if "model" in config else {}
-   
-    model = TemporalInfoGraph(**model_cfg, mode="classify", A=data.A[:18, :18])
-    # model = ST_GCN_18(2, 2, graph_cfg, edge_importance_weighting=False)
+
+    model = TemporalInfoGraph(**model_cfg, mode="classify", num_classes=num_classes, A=data.A[:18, :18])
+    # model = ST_GCN_18(2, num_classes, graph_cfg, edge_importance_weighting=True)
+    # Data set has only 2 classes but the classes 12 and 49 therfore we need a larger 1 hot vector
 
     # if "print_summary" in config and config["print_summary"]:
     #     summary(model.to("cuda"), input_size=(2, data.A.shape[0], 300),
@@ -236,8 +248,6 @@ def train_stgcn(config, path):
     torch.save(model, path + "STGCN.pt")
 
 
-
-
 def train_tig(config, path):
     """
     """
@@ -247,8 +257,11 @@ def train_tig(config, path):
     #### Data Set Up ####
     data = TIGDataset(**config["data"])
 
-    train = data.stratify(num=2, num_samples=100, mode=1)
-    loader = DataLoader(train, **config["loader"])
+    if "stratify" in config:
+        train = data.stratify(**config["stratify"])#num=2, num_samples=100, mode=1)
+        loader = DataLoader(train, **config["loader"])
+    else:
+        loader = DataLoader(data, **config["loader"])
 
     #### Model #####
     model_cfg = config["model"] if "model" in config else {}
@@ -371,6 +384,7 @@ def tig_metric(loss_fn):
     auc = evaluate(yhat_norm, loss_fn.mask.detach().numpy(), mode="auc")
 
     return {"accuracy": acc, "precision": prec, "auc": auc}
+
 
 def stgcn_metric(yhat, batch_y):
     yhat = yhat.cpu().detach().numpy()

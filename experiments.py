@@ -40,7 +40,7 @@ from model import Solver, TemporalInfoGraph, TemporalInfoGraphLSTM
 from baseline import MLP
 from model.loss import jensen_shannon_mi, bce_loss, hypersphere_loss
 from tracker import Tracker
-from evaluation import svc_classify, mlp_classify, randomforest_classify
+# from evaluation import svc_classify, mlp_classify, randomforest_classify
 from visualization.plots import plot_emb, plot_curve
 from visualization import create_gif
 
@@ -590,108 +590,108 @@ class Experiment():
         return ax.figure
 
     ### Experiment Evaluation ####
-    def evaluate_emb(self, plot: bool = False, which: [str] = None):
-        """ Evaluate the quality of the embeddings by testing different classifier.
+#     def evaluate_emb(self, plot: bool = False, which: [str] = None):
+#         """ Evaluate the quality of the embeddings by testing different classifier.
 
-            Paramters:
-                plot: bool
-                    If true the embeddings with their predictions are plotted.
-        """
-        if hasattr(self, "clf_val_metrics"):
-            if hasattr(self, "log"):
-                self.log.info(f"(Pipeline) MLP Accuracy: {np.max(self.clf_val_metrics['val. top-1'])}, {np.max(self.clf_val_metrics['val. top-5'])}")
-            else:
-                print(f"(Pipeline) MLP Accuracy: {np.max(self.clf_val_metrics['val. top-1'])}, {np.max(self.clf_val_metrics['val. top-5'])}")
+#             Paramters:
+#                 plot: bool
+#                     If true the embeddings with their predictions are plotted.
+#         """
+#         if hasattr(self, "clf_val_metrics"):
+#             if hasattr(self, "log"):
+#                 self.log.info(f"(Pipeline) MLP Accuracy: {np.max(self.clf_val_metrics['val. top-1'])}, {np.max(self.clf_val_metrics['val. top-5'])}")
+#             else:
+#                 print(f"(Pipeline) MLP Accuracy: {np.max(self.clf_val_metrics['val. top-1'])}, {np.max(self.clf_val_metrics['val. top-5'])}")
     
-        #### SVM Classifier ####
-        if which is None or "svm" in which:
-            if hasattr(self, "log"):
-                self.log.info("Run SVM...")
-            else:
-                print("Run SVM...")
-            acc = svc_classify(self.emb_x, self.emb_y, search=True)
+#         #### SVM Classifier ####
+#         if which is None or "svm" in which:
+#             if hasattr(self, "log"):
+#                 self.log.info("Run SVM...")
+#             else:
+#                 print("Run SVM...")
+#             acc = svc_classify(self.emb_x, self.emb_y, search=True)
 
-            if plot:
-                pca = PCA(n_components=2, random_state=123)
-                x = pca.fit_transform(self.emb_x)
+#             if plot:
+#                 pca = PCA(n_components=2, random_state=123)
+#                 x = pca.fit_transform(self.emb_x)
 
-                _, ax = plt.subplots(figsize=(5,5))
-                ax.set_title(f"SVM - Classifier (Avg. accuracy: {acc})")
-                ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
-                            cmap=sns.color_palette("Spectral", as_cmap=True))
-                ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
-                            cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
+#                 _, ax = plt.subplots(figsize=(5,5))
+#                 ax.set_title(f"SVM - Classifier (Avg. accuracy: {acc})")
+#                 ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
+#                             cmap=sns.color_palette("Spectral", as_cmap=True))
+#                 ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
+#                             cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
 
-            if hasattr(self, "log"):
-                self.log.info(f"SVM Avg. Accuracy (top-1): {acc}")
-            else:
-                print(f"SVM Avg. Accuracy (top-1): {acc}")
+#             if hasattr(self, "log"):
+#                 self.log.info(f"SVM Avg. Accuracy (top-1): {acc}")
+#             else:
+#                 print(f"SVM Avg. Accuracy (top-1): {acc}")
             
-            if self.ssh == "local":
-                f = Path(f"{self.path}sklearn.evaluation.txt")
-                f = open(f"{self.path}sklearn.evaluation.txt", "a")
-                f.write(f"SVM Avg. Accuracy (top-1): {acc}\n")
-                f.close()
+#             if self.ssh == "local":
+#                 f = Path(f"{self.path}sklearn.evaluation.txt")
+#                 f = open(f"{self.path}sklearn.evaluation.txt", "a")
+#                 f.write(f"SVM Avg. Accuracy (top-1): {acc}\n")
+#                 f.close()
 
-        #### MLP Classifier ####
-        if which is None or "mlp" in which:
-            if hasattr(self, "log"):
-                self.log.info("Run MLP...")
-            else:
-                print("Run MLP...")
-            acc = mlp_classify(x=self.emb_x, y=self.emb_y, search=True)
+#         #### MLP Classifier ####
+#         if which is None or "mlp" in which:
+#             if hasattr(self, "log"):
+#                 self.log.info("Run MLP...")
+#             else:
+#                 print("Run MLP...")
+#             acc = mlp_classify(x=self.emb_x, y=self.emb_y, search=True)
 
-            if plot:
-                pca = PCA(n_components=2, random_state=123)
-                x = pca.fit_transform(self.emb_x)
+#             if plot:
+#                 pca = PCA(n_components=2, random_state=123)
+#                 x = pca.fit_transform(self.emb_x)
 
-                _, ax = plt.subplots(figsize=(5,5))
-                ax.set_title(f"MLP (Sklearn) - Classifier (Avg. accuracy: {acc})")
-                ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
-                            cmap=sns.color_palette("Spectral", as_cmap=True))
-                ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
-                            cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
+#                 _, ax = plt.subplots(figsize=(5,5))
+#                 ax.set_title(f"MLP (Sklearn) - Classifier (Avg. accuracy: {acc})")
+#                 ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
+#                             cmap=sns.color_palette("Spectral", as_cmap=True))
+#                 ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
+#                             cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
 
-            if hasattr(self, "log"):
-                self.log.info(f"MLP Avg. Accuracy (top-1): {acc}")
-            else:
-                print(f"MLP Avg. Accuracy (top-1): {acc}")
+#             if hasattr(self, "log"):
+#                 self.log.info(f"MLP Avg. Accuracy (top-1): {acc}")
+#             else:
+#                 print(f"MLP Avg. Accuracy (top-1): {acc}")
             
-            if self.ssh == "local":
-                f = Path(f"{self.path}sklearn.evaluation.txt")
-                f = open(f"{self.path}sklearn.evaluation.txt", "a")
-                f.write(f"MLP Avg. Accuracy (top-1): {acc}\n")
-                f.close()
+#             if self.ssh == "local":
+#                 f = Path(f"{self.path}sklearn.evaluation.txt")
+#                 f = open(f"{self.path}sklearn.evaluation.txt", "a")
+#                 f.write(f"MLP Avg. Accuracy (top-1): {acc}\n")
+#                 f.close()
 
-        #### Random Forest Classifier ####
-        if which is None or "random forest" in which:
-            if hasattr(self, "log"):
-                self.log.info("Run Random Forest ...")
-            else:
-                print("Run Random Forest ...")
-            acc = randomforest_classify(x=self.emb_x, y=self.emb_y, search=True)
+#         #### Random Forest Classifier ####
+#         if which is None or "random forest" in which:
+#             if hasattr(self, "log"):
+#                 self.log.info("Run Random Forest ...")
+#             else:
+#                 print("Run Random Forest ...")
+#             acc = randomforest_classify(x=self.emb_x, y=self.emb_y, search=True)
 
-            if plot:
-                pca = PCA(n_components=2, random_state=123)
-                x = pca.fit_transform(self.emb_x)
+#             if plot:
+#                 pca = PCA(n_components=2, random_state=123)
+#                 x = pca.fit_transform(self.emb_x)
 
-                _, ax = plt.subplots(figsize=(5,5))
-                ax.set_title(f"Random Forest - Classifier (Avg. accuracy: {acc})")
-                ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
-                            cmap=sns.color_palette("Spectral", as_cmap=True))
-                ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
-                            cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
+#                 _, ax = plt.subplots(figsize=(5,5))
+#                 ax.set_title(f"Random Forest - Classifier (Avg. accuracy: {acc})")
+#                 ax.scatter(x[:, 0], x[:, 1], c=pred.astype(int), facecolors='none', s=80,  linewidth=2,
+#                             cmap=sns.color_palette("Spectral", as_cmap=True))
+#                 ax.scatter(x[:, 0], x[:, 1], c=self.emb_y.astype(int),
+#                             cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
 
-            if hasattr(self, "log"):
-                self.log.info(f"Random Forest Avg. Accuracy (top-1): {acc}")
-            else:
-                print(f"Random Forest Avg. Accuracy (top-1): {acc}")
+#             if hasattr(self, "log"):
+#                 self.log.info(f"Random Forest Avg. Accuracy (top-1): {acc}")
+#             else:
+#                 print(f"Random Forest Avg. Accuracy (top-1): {acc}")
             
-            if self.ssh == "local":
-                f = Path(f"{self.path}sklearn.evaluation.txt")
-                f = open(f"{self.path}sklearn.evaluation.txt", "a")
-                f.write(f"Random Forest Avg. Accuracy (top-1): {acc}\n")
-                f.close()
+#             if self.ssh == "local":
+#                 f = Path(f"{self.path}sklearn.evaluation.txt")
+#                 f = open(f"{self.path}sklearn.evaluation.txt", "a")
+#                 f.write(f"Random Forest Avg. Accuracy (top-1): {acc}\n")
+#                 f.close()
 
     def plot_emb_3D(self, gif_path: str = None, plotly= True, label=None):
         """

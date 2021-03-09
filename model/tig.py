@@ -47,7 +47,7 @@ class TemporalConvolution(nn.Module):
 
         if isinstance(self.kernel, int):
             self.kernel = (1, self.kernel)
-        
+
         padding = ((self.kernel[1] - 1) // 2, 0)
         self.tcn = nn.Sequential(
             nn.Conv2d(
@@ -123,9 +123,10 @@ class TemporalInfoGraph(nn.Module):
 
         if architecture is None:
             # Fits in 4 GB Memory
+            # Default Plain architecture without EW and MS
             architecture = [
-                (2, 32, 64, 64),
-                (64, 128, 128, 256)
+                (2, 32, 32, 128),
+                (128, 128, 128, 256)
             ]
 
         for c_in, c_out, spec_out, out in architecture:
@@ -140,6 +141,7 @@ class TemporalInfoGraph(nn.Module):
                 nn.LeakyReLU(),
                 specConv,
                 nn.BatchNorm2d(spec_out),
+                nn.Dropout(0.5),
                 nn.LeakyReLU(),
                 tempConv2,
                 nn.LeakyReLU()
@@ -175,9 +177,11 @@ class TemporalInfoGraph(nn.Module):
         self.relu = nn.LeakyReLU()
 
         if self.mode == "classify":
-            self.fcn = nn.Conv2d(256, num_classes, kernel_size=1)
+            self.fcn = nn.Conv2d(architecture[-1][-1], num_classes, kernel_size=1)
         else:
-            self.fcn = nn.Conv2d(out, out, kernel_size=1)
+            self.fcn = nn.Sequential(nn.Conv2d(out, out, kernel_size=1),
+                                     nn.Dropout(0.5),
+                                     nn.BatchNorm2d(out))
 
     def forward(self, X: torch.Tensor):
 
@@ -192,6 +196,11 @@ class TemporalInfoGraph(nn.Module):
         X = self.relu(X)
 
         concat_scales = []
+        
+        if not hasattr(self, "edge_importance"):
+            self.edge_importance = [nn.Identity()] * len(self.convLayers)
+        if not hasattr(self, "ms_layers"):
+            self.ms_layers = [nn.Identity()] * len(self.convLayers)
 
         # In: (batch_size, features, time, nodes)
         for layer, res_layer, bn, E, ms_layer in zip(self.convLayers, self.res_layers, 

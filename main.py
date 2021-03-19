@@ -98,21 +98,28 @@ if args.train:
 
     #### Tracking Location ####
     date = datetime.now().strftime("%d%m%Y_%H%M")
-    path = f"./output/{date}_{name}/"
-    Path(path).mkdir(parents=True, exist_ok=True)
+    path_init = f"./output/{date}_{name}/"
+    Path(path_init).mkdir(parents=True, exist_ok=True)
 
-    log = create_logger(path)
+    log = create_logger(path_init)
 
-    for i in range(5):
-        log.info(f"Train loop: {i}")
-        Path(path + f"{i}").mkdir(parents=True, exist_ok=True)
+    for epochs in [50, 100, 200]:
+        log.info(f"Epoch: {epochs}")
+        Path(path_init + f"{epochs}epochs").mkdir(parents=True, exist_ok=True)
 
-        if args.model == "tig":
-            train_tig(config, path + f"/{i}/")
-        elif args.model == "stgcn":
-            train_stgcn(config, path + f"/{i}/")
-        else:
-            log.info(f"Model not found ({args.model })!")
+        config["training"]["n_epochs"] = epochs
+
+        for i in range(5):
+            log.info(f"Train loop: {i}")
+            path = path_init + f"{epochs}epochs/{i}/"
+            Path(path).mkdir(parents=True, exist_ok=True)
+
+            if args.model == "tig":
+                train_tig(config, path)
+            elif args.model == "stgcn":
+                train_stgcn(config, path)
+            else:
+                log.info(f"Model not found ({args.model })!")
 
     log.info(f"Training done. Output path: {path}")
 

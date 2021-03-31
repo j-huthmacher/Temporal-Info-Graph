@@ -109,17 +109,9 @@ class TemporalInfoGraph(nn.Module):
         self.mode = mode
         self.multi_scale = multi_scale
 
-        A = torch.tensor(get_normalized_adj(A), dtype=torch.float32).to("cuda")
+        A = torch.tensor(get_normalized_adj(A), dtype=torch.float32).to("cpu")
         self.num_nodes = A.shape[0]
         self.register_buffer('A', A)
-
-        #### Initial Data Normalization ####
-        self.data_norm = nn.BatchNorm1d(2*18)
-
-        self.layers = []
-        self.res_layers = []
-        self.bn_layers = []
-        self.ms_layers = []
 
         if architecture is None:
             # Fits in 4 GB Memory
@@ -128,6 +120,17 @@ class TemporalInfoGraph(nn.Module):
                 (2, 32, 32, 128),
                 (128, 128, 128, 256)
             ]
+
+        #### Initial Data Normalization ####
+        in_ch = architecture[0][0]
+        self.data_norm = nn.BatchNorm1d(in_ch * A.shape[0])
+
+        self.layers = []
+        self.res_layers = []
+        self.bn_layers = []
+        self.ms_layers = []
+
+        
 
         for c_in, c_out, spec_out, out in architecture:
 
@@ -160,7 +163,6 @@ class TemporalInfoGraph(nn.Module):
             else:
                 self.ms_layers.append(None)
 
-
         self.convLayers = nn.Sequential(*self.layers)
         self.res_layers = nn.Sequential(*self.res_layers)
         self.bn_layers = nn.Sequential(*self.bn_layers)
@@ -188,6 +190,7 @@ class TemporalInfoGraph(nn.Module):
         N, C, T, V, M = X.size()
         X = X.permute(0, 4, 3, 1, 2).contiguous()
         X = X.view(N * M, V * C, T)
+
         X = self.data_norm(X)
         X = X.view(N, M, V, C, T)
         X = X.permute(0, 1, 3, 4, 2).contiguous()
@@ -203,7 +206,7 @@ class TemporalInfoGraph(nn.Module):
             self.ms_layers = [nn.Identity()] * len(self.convLayers)
 
         # In: (batch_size, features, time, nodes)
-        for layer, res_layer, bn, E, ms_layer in zip(self.convLayers, self.res_layers, 
+        for layer, res_layer, bn, E, ms_layer in zip(self.convLayers, self.res_layers,
                                                      self.bn_layers, self.edge_importance,
                                                      self.ms_layers):
             res = res_layer(X)

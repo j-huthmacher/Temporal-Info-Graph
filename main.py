@@ -102,8 +102,9 @@ if args.train:
     Path(path_init).mkdir(parents=True, exist_ok=True)
 
     log = create_logger(path_init)
-
-    for epochs in [50, 100, 200]:
+    epoch_list = config["training"]["n_epochs"]
+    
+    for epochs in epoch_list:
         log.info(f"Epoch: {epochs}")
         Path(path_init + f"{epochs}epochs").mkdir(parents=True, exist_ok=True)
 

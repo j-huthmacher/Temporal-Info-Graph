@@ -84,7 +84,7 @@ class TIGDataset(Dataset):
                     # Download and extract data if not exists.
                     self.load_data()
                 if "stgcn" in name:
-                    self.A = KINECT_ADJACENCY#[:18, :18]
+                    self.A = KINECT_ADJACENCY[:18, :18]
                 elif "ntu" in name:
                     self.A = NTU_ADJACENCY
                 else:
@@ -104,17 +104,18 @@ class TIGDataset(Dataset):
         """
         """
         path="D:/Temporal Info Graph/data/NTU-RGB-D/xsub/"
-        ntu_train_data = np.load(path + 'train_data.npy', mmap_mode="r")
+        self.x = np.load(path+"",mmap_mode="r")
+        # ntu_train_data = np.load(path + 'train_data.npy', mmap_mode="r")
         
-        with open(f"{path}train_label.pkl", "rb") as f:
-                ntu_train_labels = pickle.load(f)
+        # with open(f"{path}train_label.pkl", "rb") as f:
+        #         ntu_train_labels = pickle.load(f)
 
-        if self.lim is not None:
-            self.x = ntu_train_data[:self.lim].transpose(0,4,2,3,1).reshape(-1, 300, 25, 3)
-            self.y = np.array(ntu_train_labels[1])[:self.lim]
-        else:
-            self.x = ntu_train_data.transpose(0,4,2,3,1).reshape(-1, 300, 25, 3)
-            self.y = np.array(ntu_train_labels[1])
+        # if self.lim is not None:
+        #     self.x = ntu_train_data[:self.lim]#.transpose(0,4,2,3,1).reshape(-1, 300, 25, 3)
+        #     self.y = np.array(ntu_train_labels[1])[:self.lim]
+        # else:
+        #     self.x = ntu_train_data#.transpose(0,4,2,3,1).reshape(-1, 300, 25, 3)
+        #     self.y = np.array(ntu_train_labels[1])
 
     def load_stgcn_local(self):
         """
@@ -377,7 +378,7 @@ class TIGDataset(Dataset):
 
         return sets[0] if mode <= 1 else sets
 
-    def stratify(self, num: int, num_samples = None, train_ratio=0.8, val_ratio=0.1, mode=2, lim=None,
+    def stratify(self, num: int, num_samples=None, train_ratio=0.8, val_ratio=0.1, mode=2, lim=None,
                  ret_idx=False):
         """
         """

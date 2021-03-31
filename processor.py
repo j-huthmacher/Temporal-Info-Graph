@@ -265,7 +265,8 @@ def train_tig(config, path):
 
     #### Model #####
     model_cfg = config["model"] if "model" in config else {}
-    model = TemporalInfoGraph(**model_cfg, A=data.A[:18, :18])
+    # model = TemporalInfoGraph(**model_cfg, A=data.A[:18, :18])
+    model = TemporalInfoGraph(**model_cfg, A=data.A)
 
     # if "print_summary" in config and config["print_summary"]:
     #     summary(model.to("cuda"), input_size=(2, data.A.shape[0], 300),
@@ -293,6 +294,9 @@ def train_tig(config, path):
         batch_x = batch_x.type("torch.FloatTensor").to("cuda")
         N, T, V, C = batch_x.size()
         batch_x = batch_x.permute(0, 3, 1, 2).view(N, C, T, V//2, 2)
+
+        # N, T, V, C = batch_x.size()
+        # batch_x = batch_x.permute(0, 3, 1, 2).view(N, C, T, V, 1)
 
         # batch_x = batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1)
 
@@ -457,6 +461,11 @@ def encode(loader, path, model, verbose=True):
             batch_x = batch_x.type("torch.FloatTensor").to("cuda")
             N, T, V, C = batch_x.size()
             batch_x = batch_x.permute(0, 3, 1, 2).view(N, C, T, V // 2, 2)
+
+            # NTU RGB + D
+            # N, T, V, C = batch_x.size()
+            # batch_x = batch_x.permute(0, 3, 1, 2).view(N, C, T, V, 1)
+
             # batch_x = batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1)
             pred, _ = model(batch_x)
 

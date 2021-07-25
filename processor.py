@@ -1,11 +1,18 @@
-"""
+""" The processor script takes care of the general training procedure of different models.
+
+In this file you will find among others:
+* batch iteration
+* train steps / optimization steps
+* tracking of mertrics such as accuracy, auc, or precision
+
+
 """
 from pathlib import Path
 import json
 import os
 import logging
 
-import numpy as np 
+import numpy as np
 from sklearn import metrics
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import top_k_accuracy_score, accuracy_score
@@ -248,74 +255,89 @@ def train_stgcn(config, path):
     torch.save(model, path + "STGCN.pt")
 
 
-def train_tig(config, path):
-    """
-    """
-    log = logging.getLogger('TIG_Logger')
-    log.info("Output path: " + path)
+def train_tig(config: dict, path: str):
+    """ Is the training function for the TIG model and it includes the tracking of the metrics.
 
-    #### Data Set Up ####
+        Parameters:
+            config: dict
+                Dictionary of configuration paramters
+            path: str
+                Path where all artifacts that are created during training are stored.
+
+        Return:
+            None
+    """
+    # Instantiate logger
+    log = logging.getLogger('TIG_Logger')
+    log.info("Output path: %s", path)
+
+    #### Set Up Data ####
     data = TIGDataset(**config["data"])
 
     if "stratify" in config:
-        train = data.stratify(**config["stratify"])#num=2, num_samples=100, mode=1)
+        train = data.stratify(**config["stratify"])
         loader = DataLoader(train, **config["loader"])
     else:
         loader = DataLoader(data, **config["loader"])
 
     #### Model #####
     model_cfg = config["model"] if "model" in config else {}
-    # model = TemporalInfoGraph(**model_cfg, A=data.A[:18, :18])
     model = TemporalInfoGraph(**model_cfg, A=data.A)
-
-    # if "print_summary" in config and config["print_summary"]:
-    #     summary(model.to("cuda"), input_size=(2, data.A.shape[0], 300),
-    #             batch_size=config["loader"]["batch_size"])
 
     model = model.to("cuda")
 
-    log.info(f"Model parameter: " + str(sum(p.numel() for p in model.parameters() if p.requires_grad)))
+    log.info("Model parameter: %s",
+             str(sum(p.numel() for p in model.parameters() if p.requires_grad)))
 
+    # Default loss function is JSD MI estimate
     loss_fn = jensen_shannon_mi
     if "loss" in config and config["loss"] == "bce":
+        # Alternatively one can use the binary cross-entropy loss
         loss_fn = bce_loss
 
     train_cfg = config["training"]
     try:
-        optimizer = getattr(optim, train_cfg["optimizer_name"])(
-                    model.parameters(),
-                    **train_cfg["optimizer"])
-    except: #pylint: disable=bare-exception,bad-option-value
+        # Get optimizer class from PyTorch dynamically using the name 
+        optimizer = getattr(optim, train_cfg["optimizer_name"])
+        # Instantiate PyTorch optimizer
+        optimizer = optimizer(model.parameters(), **train_cfg["optimizer"])
+    # pylint: disable=bare-except,bad-option-value
+    except:  # noqa: E722
         optimizer = optim.Adam(model.parameters())
 
     #### Train Step ####
-    def train_step(batch_x, batch_y):
+    def train_step(batch_x: torch.Tensor):
+        """ Definition of a single train step.
 
+            Parameters:
+                batch_x: torch.Tensor
+                    Batch of feature tensors
+            Return:
+                torch.Tensor: Tensor of size (N, 1) containing the (batch) loss.
+        """
         batch_x = batch_x.type("torch.FloatTensor").to("cuda")
+        # N: num. samples; T: num. timesteps; V: num. persons; C: num. features
         N, T, V, C = batch_x.size()
-        batch_x = batch_x.permute(0, 3, 1, 2).view(N, C, T, V//2, 2)
-
-        # N, T, V, C = batch_x.size()
-        # batch_x = batch_x.permute(0, 3, 1, 2).view(N, C, T, V, 1)
-
-        # batch_x = batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1)
+        # Each frame always contain two skeletons. Here we split it into two separate items.
+        batch_x = batch_x.permute(0, 3, 1, 2).view(N, C, T, V // 2, 2)
 
         optimizer.zero_grad()
 
-        # Returns tuple: global, local
+        # Returns tuple: global emb., local emb.
         yhat = model(batch_x)
         loss = loss_fn(*yhat)
 
-
         if loss.isnan():
             # Loss can be nan when the batch only contains a single sample!
-            return
+            # Just ignore this case.
+            return None
 
         loss.backward()
         optimizer.step()
 
         return loss
 
+    # Before starting the training, extend the config among others by the optimizer
     with open(f'{path}/config.json', 'w') as fp:
         json.dump({
             **config,
@@ -335,47 +357,54 @@ def train_tig(config, path):
 
         batch_loss = []
         batch_metric = {}
-        for batch, (batch_x, batch_y) in enumerate(tqdm(loader, leave=False,
-                                                        disable=False, desc=f'Trai. Batch (Epoch: {epoch})')):
+        # The loader returns a tuple of (batch_x, batch_y)
+        batch_bar = tqdm(loader, leave=False, disable=False,
+                         desc=f'Trai. Batch (Epoch: {epoch})')
+        for _, (batch_x, _) in enumerate(batch_bar):
 
-            loss = train_step(batch_x, batch_y)
-            metric = tig_metric(loss_fn)
-
+            loss = train_step(batch_x)
             batch_loss.append(torch.squeeze(loss).item())
+
+            # Calculate metrics for current batch
+            metric = tig_metric(loss_fn)            
             for key in metric:
+                # Stack metrics per batch to get an array for each metric
                 batch_metric[key] = (batch_metric[key] + [metric[key]]
-                                     if "key" in batch_metric
+                                     if key in batch_metric
                                      else [metric[key]])
 
-
         epoch_loss.append(np.mean(batch_loss))
+
+        # Calculate metric on epoch level by averaging the metrics from each single step
         for key in batch_metric:
             metric_val = np.mean(batch_metric[key])
             epoch_metric[key] = (epoch_metric[key] + [metric_val]
                                  if key in epoch_metric
-                                  else [metric_val])
+                                 else [metric_val])
 
-        np.save(path + "TIG_train_losses.npy",  epoch_loss)
+        np.save(path + "TIG_train_losses.npy", epoch_loss)
         np.savez(path + "TIG_train.metrics",
-                accuracy=epoch_metric["accuracy"],
-                precision=epoch_metric["precision"],
-                auc=epoch_metric["auc"])
+                 accuracy=epoch_metric["accuracy"],
+                 precision=epoch_metric["precision"],
+                 auc=epoch_metric["auc"])
 
+        # Optionally one can save the embeddings after each epoch to have
+        # intermediate results in case of an exceptional error.
         if "emb_tracking" in config and isinstance(config["emb_tracking"], int):
             if epoch % config["emb_tracking"] == 0:
                 encode(loader, path, model, verbose=False)
 
-        epoch_pbar.set_description(f'Epochs ({model.__class__.__name__})' +
-                                   f'(Mean Acc.: {"%.2f"%np.mean(epoch_metric["accuracy"])}, ' +
-                                   f'Mean Prec: {"%.2f"%np.mean(epoch_metric["precision"])}, ' +
-                                   f'Mean AUC: {"%.2f"%np.mean(epoch_metric["auc"])})')
+        epoch_pbar.set_description((f'Epochs ({model.__class__.__name__})'
+                                    f'(Mean Acc.: {"%.2f"%np.mean(epoch_metric["accuracy"])}, '
+                                    f'Mean Prec: {"%.2f"%np.mean(epoch_metric["precision"])}, '
+                                    f'Mean AUC: {"%.2f"%np.mean(epoch_metric["auc"])})'))
 
-    torch.save(model, path + "TIG_.pt")
+    torch.save(model, path + "TIG_Model.pt")
 
     #### Create Encodings ####
     encode(loader, path, model)
 
-
+# TODO: Check if it is used, Cleand code
 def tig_metric(loss_fn):
     yhat_norm = torch.sigmoid(loss_fn.discr_matr).detach().numpy()
     yhat_norm[yhat_norm > 0.5] = 1

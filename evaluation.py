@@ -316,25 +316,3 @@ def run_evaluation(x_in: np.ndarray, y_in: np.ndarray, baseline: str = "svm",
             return top1, top5, sum([len(x) for x in model.coefs_])
         else:
             return top1, top5, -1
-
-def get_metric_stats(experiments, num_results=4):
-    auc = []
-    prec = []
-    
-    results_prec = []
-    results_auc = []
-    result = []
-
-    for exp in experiments:
-        try:
-            for i in range(num_results+1):
-                metrics = np.load(exp[1] + str(i) + "/TIG_train.metrics.npz")
-                auc.append(np.squeeze(metrics["auc"]))
-                prec.append(np.squeeze(metrics["precision"]))
-
-            result.append([exp[0], np.mean(auc, axis=0) , np.std(auc, axis=0), np.mean(prec, axis=0), np.std(prec, axis=0)])
-            auc, prec = [], []
-        except:
-            pass
-        
-    return np.array(result)

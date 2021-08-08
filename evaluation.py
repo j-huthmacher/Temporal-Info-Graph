@@ -4,15 +4,18 @@ import json
 from datetime import datetime
 
 import torch
+from torch.utils.data import DataLoader
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import top_k_accuracy_score, accuracy_score
+from sklearn import preprocessing
 
 from tqdm.auto import tqdm, trange
 
 from baseline import get_model
-from data.tig_data_set import TIGDataset
+from utils.tig_data_set import TIGDataset
+from processor import stgcn_metric
 
 
 def load_eval_data(config: dict, path: str = None, num_classes: int = 50,
@@ -39,7 +42,7 @@ def load_eval_data(config: dict, path: str = None, num_classes: int = 50,
         x = np.load(path + "embeddings_full.npz")["x"]
         y = np.load(path + "embeddings_full.npz")["y"]
     else:
-        data_cfg = {**config, **{"path": "../content/"}}
+        data_cfg = {**config, **{"path": "../data/"}}
 
         data = TIGDataset(**data_cfg)
 
@@ -66,7 +69,7 @@ def evaluate_experiments(experiments: [tuple], baseline="mlp", repeat_baseline=5
     """ Unified method to evaluate different experiments.
         The experiments are evaluated successively.
 
-        Parameters:
+        Args:
             experiments: [tuple]
                 List of tuples of the form of ("MODEL_NAME", "PATH_TO_MODEL").
             baseline: str
@@ -316,3 +319,137 @@ def run_evaluation(x_in: np.ndarray, y_in: np.ndarray, baseline: str = "svm",
             return top1, top5, sum([len(x) for x in model.coefs_])
         else:
             return top1, top5, -1
+
+
+def get_metric_stats(experiments: [tuple], exp_repetitions: int = 5):
+    """ Function to get the mean and standard deviations of the metrics of an experiment along the repetitions.
+
+        Args:
+            experiments: [tuple]
+                List of tuples of the form (EXPERIMENT_NAME, EXPERIMENT_PATH) with
+                type (str, str).
+            exp_repetitions: int
+                Number of repetitions of the experiment, i.e. how of the experiment
+                was repeated. The stats of the the metrics are calculated along the
+                repetitions.
+        Return:
+            np.ndarray: List of the mean and standard deviation over the repetitions of the metrics
+                        for each experiment. The list has the dimension/length of (num_experiments)
+                        and each entry has the form of
+                        (EXPERIMENT_NAME, [AUC_MEAN], [AUC_STD], [PREC_MEAN], [PREC_STD]) of type
+                        (str, [float], [float], [float], [float]).
+    """
+    auc = []
+    prec = []
+
+    result = []
+
+    for exp in experiments:
+        try:
+            for i in range(exp_repetitions):
+                metrics = np.load(exp[1] + str(i) + "/TIG_train.metrics.npz")
+                auc.append(np.squeeze(metrics["auc"]))
+                prec.append(np.squeeze(metrics["precision"]))
+
+            # E.g. "auc" has the form (num_repetitions, num_epochs). This holds also for "prec".
+            result.append([exp[0], np.mean(auc, axis=0), np.std(auc, axis=0),
+                           np.mean(prec, axis=0), np.std(prec, axis=0)])
+            auc, prec = [], []
+        # pylint: disable=broad-except
+        except Exception:
+            # For the case that there are no metrics stored.
+            pass
+
+    return np.array(result)
+
+
+# TODO: Add docstring (Not used).
+def evaluate_pytorch_model(experiments: [tuple], device: str = "cuda", repeat=10,
+                           verbose=True, portion=1):
+    """ Not used. Exists for test purpose.
+    """
+    results = []
+
+    for name, path in tqdm(experiments):
+        with open(path + "config.json") as file:
+            config = json.load(file)
+
+        model = torch.load(path + "STGCN.pt").to(device)
+
+        # Those steps aligne to the portion of data used in the training.
+        data_cfg = {**config["data"], **{"name": "stgcn_50_classes", "path": "../content/"}}
+        data = TIGDataset(**data_cfg)
+
+        if "stratify" in config:
+            train = data.stratify(**config["stratify"])  # num=2, num_samples=100, mode=1)
+            x = np.array(train)[:, 0]
+            y = np.array(train)[:, 1].astype(int)
+        else:
+            x = data.x
+            y = data.y
+
+        thr = int(x.shape[0] * portion)
+        if portion < 1:
+            classes = np.unique(y)
+            num_samples = thr // len(classes)
+            idx = np.array([], dtype=int)
+
+            for cls in classes:
+                idx = np.append(idx, np.where(y == cls)[0][:num_samples])
+
+            x = x[idx]
+            y = y[idx]
+
+        # num_classes = len(np.unique(y))
+
+        le = preprocessing.LabelEncoder()
+        y = le.fit_transform(y)
+
+        top1 = []
+        top5 = []
+
+        pbar = trange(repeat, desc="Top1: - | Top2: - ", disable=(not verbose))
+
+        for i in pbar:
+            _, X_test, _, y_test = train_test_split(x, y, random_state=i + 50)
+            val_loader = DataLoader(list(zip(X_test, y_test)), **config["loader"])
+
+            with torch.no_grad():
+                top1_batch = []
+                top5_batch = []
+                for batch_x, batch_y in val_loader:
+                    # Input (batch_size, time, nodes, features)
+                    batch_x = batch_x.type("torch.FloatTensor").to(device)
+                    N, T, V, C = batch_x.size()
+                    batch_x = batch_x.permute(0, 3, 1, 2).view(N, C, T, V // 2, 2)
+
+                    # batch_x = batch_x.type("torch.FloatTensor").permute(0, 3, 2, 1).to(device)
+
+                    yhat = model(batch_x.to(device))
+
+                    metric = stgcn_metric(yhat, batch_y)
+
+                    t1 = metric["top-1"]
+                    t5 = metric["top-5"]
+                    top1_batch.append(t1)
+                    top5_batch.append(t5)
+
+                top1.append(np.mean(top1_batch))
+                top5.append(np.mean(top5_batch))
+
+                pbar.set_description((f"Top1: {'{:.4f}'.format(np.mean(top1)*100)} "
+                                      f"| Top2: {'{:.4f}'.format(np.mean(top5)*100)}"))
+
+        results.append({
+            "Model": name,
+            "Top-1 Accuracy": np.mean(top1) * 100,
+            "Top-1 Std.": np.std(top1) * 100,
+            "Top-5 Accuracy": np.mean(top5) * 100,
+            "Top-5 Std.": np.std(top5) * 100,
+            "# Parameter": sum(p.numel() for p in model.parameters() if p.requires_grad),
+            "Portion": portion,
+            "Num Samples": x.shape[0],
+            "Classes": np.unique(y)
+        })
+
+    return pd.DataFrame(results)

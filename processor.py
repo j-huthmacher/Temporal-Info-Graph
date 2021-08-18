@@ -1,15 +1,16 @@
 """ The processor script takes care of the general training procedures of different models.
 
 In this file you will find among others:
-* batch/epoch iteration
-* train steps / optimization steps
-* tracking of mertrics such as accuracy, auc, or precision
+    * batch/epoch iteration
+    * train steps / optimization steps
+    * tracking of mertrics such as accuracy, auc, or precision
 """
 import json
 import os
 import logging
 from typing import Callable
 
+import matplotlib.pyplot as plt
 import numpy as np
 from sklearn import metrics
 from sklearn.model_selection import train_test_split
@@ -25,13 +26,13 @@ from torch.utils.data import DataLoader
 from model.tig import TemporalInfoGraph
 # from model.st_gcn_aaai18.stgcn_model import ST_GCN_18
 from model.loss import jensen_shannon_mi, bce_loss
-from data.tig_data_set import TIGDataset
-
+from utils.tig_data_set import TIGDataset
+from visualization import plot_emb, create_gif, plot_curve
 
 def train_stgcn(config: dict, path: str):
     """ Is the training function for the TIG model and it includes the tracking of the metrics.
 
-        Parameters:
+        Args:
             config: dict
                 Dictionary of configuration paramters
             path: str
@@ -100,7 +101,7 @@ def train_stgcn(config: dict, path: str):
     def train_step(batch_x: torch.Tensor, batch_y: torch.Tensor):
         """ Definition of a single train step.
 
-            Parameters:
+            Args:
                 batch_x: torch.Tensor
                     Batch of feature tensors
             Return:
@@ -232,7 +233,7 @@ def train_stgcn(config: dict, path: str):
 def train_tig(config: dict, path: str):
     """ Is the training function for the TIG model and it includes the tracking of the metrics.
 
-        Parameters:
+        Args:
             config: dict
                 Dictionary of configuration paramters
             path: str
@@ -271,7 +272,7 @@ def train_tig(config: dict, path: str):
 
     train_cfg = config["training"]
     try:
-        # Get optimizer class from PyTorch dynamically using the name 
+        # Get optimizer class from PyTorch dynamically using the name
         optimizer = getattr(optim, train_cfg["optimizer_name"])
         # Instantiate PyTorch optimizer
         optimizer = optimizer(model.parameters(), **train_cfg["optimizer"])
@@ -283,7 +284,7 @@ def train_tig(config: dict, path: str):
     def train_step(batch_x: torch.Tensor):
         """ Definition of a single train step.
 
-            Parameters:
+            Args:
                 batch_x: torch.Tensor
                     Batch of feature tensors
             Return:
@@ -359,18 +360,30 @@ def train_tig(config: dict, path: str):
         np.save(path + "TIG_train_losses.npy", epoch_loss)
         np.savez(path + "TIG_train.metrics",
                  accuracy=epoch_metric["accuracy"],
-                 precision=epoch_metric["precision"],
+                 # precision=epoch_metric["precision"],
                  auc=epoch_metric["auc"])
 
         # Optionally one can save the embeddings after each epoch to have
         # intermediate results in case of an exceptional error.
         if "emb_tracking" in config and isinstance(config["emb_tracking"], int):
             if epoch % config["emb_tracking"] == 0:
-                encode(loader, path, model, verbose=False)
+                encode(loader, path, model)
+
+        # TODO: Testing / Animate embedding behavior
+        fig = plt.figure(figsize=(10, 5), constrained_layout=True)
+        gs = fig.add_gridspec(2, 2)
+
+        plot_emb(*encode(loader, path, model, verbose=False),
+                 title=f"Epoch: {epoch}", ax=fig.add_subplot(gs[:, 0]))
+
+        plot_curve({"Loss": epoch_loss}, n_epochs=train_cfg["n_epochs"],
+                   ax=fig.add_subplot(gs[0, 1]), l_pos="below")
+        plot_curve(epoch_metric, n_epochs=train_cfg["n_epochs"],
+                   ax=fig.add_subplot(gs[1, 1]), l_pos="below")
+        create_gif(fig, path, name="embeddings.gif")
 
         epoch_pbar.set_description((f'Epochs ({model.__class__.__name__})'
                                     f'(Mean Acc.: {"%.2f"%np.mean(epoch_metric["accuracy"])}, '
-                                    f'Mean Prec: {"%.2f"%np.mean(epoch_metric["precision"])}, '
                                     f'Mean AUC: {"%.2f"%np.mean(epoch_metric["auc"])})'))
 
     torch.save(model, path + "TIG_Model.pt")
@@ -398,16 +411,17 @@ def tig_metric(loss_fn: Callable):
     yhat_norm[yhat_norm <= 0.5] = 0
 
     acc = evaluate(yhat_norm, loss_fn.mask.detach().numpy(), mode="accuracy")
-    prec = evaluate(yhat_norm, loss_fn.mask.detach().numpy(), mode="precision")
+    # prec = evaluate(yhat_norm, loss_fn.mask.detach().numpy(), mode="precision")
     auc = evaluate(yhat_norm, loss_fn.mask.detach().numpy(), mode="auc")
 
-    return {"accuracy": acc, "precision": prec, "auc": auc}
+    # return {"accuracy": acc, "precision": prec, "auc": auc}
+    return {"accuracy": acc, "auc": auc}
 
 
 def stgcn_metric(yhat: torch.Tensor, labels: torch.Tensor):
     """ Function to calculate the top-1 and top-5 accuracy as metrics for the STGCN.
 
-        Parameters:
+        Args:
             yhat: torch.Tensor
                 Tensor of the predicted classes.
             labels: torch.Tensor
@@ -422,9 +436,10 @@ def stgcn_metric(yhat: torch.Tensor, labels: torch.Tensor):
 
 
 def evaluate(predictions: np.array, labels: np.array, mode: str = "top-k"):
-    """ Function to calculate the evaluation metric.
+    """ Function to calculate the evaluation metric. In contrast to tig_metric
+        and stgcn_metric is this function more general and used by those functions.
 
-            Parameters:
+            Args:
                 predictions: np.array
                     Array with the predicted values.
                 labels: np.array
@@ -470,10 +485,12 @@ def evaluate(predictions: np.array, labels: np.array, mode: str = "top-k"):
 
 
 def encode(loader: torch.utils.data.DataLoader, path: str,
-           model: TemporalInfoGraph):
+           model: TemporalInfoGraph, verbose: bool = True):
     """ Function to encode the data in a data loader by using a TIG model.
 
-        Parameters:
+        The embeddings are stored at path with the name "embeddings_full.npz".
+
+        Args:
             loader: torch.utils.data.DataLoader
                 PyTorch data loader containing the data that should be encoded.
             path: str
@@ -487,7 +504,8 @@ def encode(loader: torch.utils.data.DataLoader, path: str,
     emb_y = []
     with torch.no_grad():
         model.eval()
-        for _, (batch_x, batch_y) in enumerate(tqdm(loader, desc="Encode Data.")):
+        for _, (batch_x, batch_y) in enumerate(tqdm(loader, desc="Encode Data.",
+                                                    disable=(not verbose))):
             batch_x = batch_x.type("torch.FloatTensor").to("cuda")
             N, T, V, C = batch_x.size()
             batch_x = batch_x.permute(0, 3, 1, 2).view(N, C, T, V // 2, 2)

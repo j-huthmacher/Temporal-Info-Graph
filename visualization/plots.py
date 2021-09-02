@@ -214,8 +214,9 @@ def plot_metric(metrics: np.ndarray, path: str, num_lines: int = 3, orientation:
     return fig
 
 
-def plot_emb(x: np.array, y: np.array, title: str = "", ax: matplotlib.axes.Axes = None,
-             count: bool = False, mode: str = "PCA", figsize=(7, 7), legend: bool = False):
+def plot_emb(x: np.array, y: np.array, title: str = "", sup_title: str = "",
+             ax: matplotlib.axes.Axes = None, count: bool = False, mode: str = "PCA",
+             figsize=(7, 7), legend: bool = False):
     """ Plot embeddings.
 
         Args:
@@ -279,7 +280,7 @@ def plot_emb(x: np.array, y: np.array, title: str = "", ax: matplotlib.axes.Axes
     # Method to easily iterate over axes of subplots.
     ax = np.squeeze([ax]) if np.squeeze([ax]).shape else [ax]
 
-    # Coloring based on the labels to see if emebddings from the same class form clusters. 
+    # Coloring based on the labels to see if emebddings from the same class form clusters.
     cmap = matplotlib.cm.get_cmap('Spectral')
     norm = matplotlib.colors.Normalize(vmin=np.min(y), vmax=np.max(y))
     y = y.astype(int)
@@ -293,20 +294,23 @@ def plot_emb(x: np.array, y: np.array, title: str = "", ax: matplotlib.axes.Axes
 
     ax[0].set_title(f"{title} {mode_str}")
 
+    ax[0].set_xlim(-5, 5)
+    ax[0].set_ylim(-5, 5)
+
     if count:
         # Adds count plot of the labels beside the embeddings.
         sns.countplot(x=y, ax=ax[1])
 
     if fig is not None:
-        fig.suptitle(title)
+        fig.suptitle(sup_title)
         return fig
 
 
 def plot_emb_pred(x: np.ndarray, y: np.ndarray, clf: torch.nn.Module, precision: float = 0.02,
                   title: str = "", ax: matplotlib.axes.Axes = None):
     """ Plots embedding plus the prediction by the given classifier. If the embedding dimension is
-        2 the decision boundaries are plotted as well. The prediction is visually shown by the border
-        of the dots.
+        2 the decision boundaries are plotted as well. The prediction is visually shown by the
+        border of the dots.
 
         Important: For the decision boundaries we do the inference for each point in the grid, which
         can be computationally expensive depending on the grid size (precision).
@@ -343,6 +347,8 @@ def plot_emb_pred(x: np.ndarray, y: np.ndarray, clf: torch.nn.Module, precision:
     if ax is None:
         fig, ax = plt.subplots(figsize=(5, 5))
 
+    cmap = sns.color_palette("Spectral", as_cmap=True)
+
     if x.shape[1] <= 2:
         #### Create a grid for the decision boundaries ####
         h = precision  # Grid precision / stepsize
@@ -365,7 +371,7 @@ def plot_emb_pred(x: np.ndarray, y: np.ndarray, clf: torch.nn.Module, precision:
         Z = ndimage.gaussian_filter(Z, sigma=1.0, order=0)
 
         #### Plot Decision Boundaries ####
-        ax.contourf(xx, yy, Z, alpha=0.8, cmap=sns.color_palette("Spectral", as_cmap=True))
+        ax.contourf(xx, yy, Z, alpha=0.8, cmap=cmap)
     else:
         #### The Embeddings are high dimensions (i.e. > 2) ####
         yhat = clf(torch.tensor(x, dtype=torch.float32)).detach().cpu().numpy()
@@ -373,12 +379,11 @@ def plot_emb_pred(x: np.ndarray, y: np.ndarray, clf: torch.nn.Module, precision:
         x = pca.fit_transform(x)
 
         #### Plot Predicted Class ####
-        cmap = sns.color_palette("Spectral", as_cmap=True)
         ax.scatter(x[:, 0], x[:, 1], c=np.argmax(yhat, axis=1).astype(int),
-                   cmap=sns.color_palette("Spectral", as_cmap=True),
+                   cmap=cmap,
                    facecolors='none', s=80, linewidth=2)
 
-    ax.scatter(x[:, 0], x[:, 1], c=y.astype(int), cmap=sns.color_palette("Spectral", as_cmap=True), edgecolors='w')
+    ax.scatter(x[:, 0], x[:, 1], c=y.astype(int), cmap=cmap, edgecolors='w')
 
     ax.set_title(title)
 
@@ -387,7 +392,8 @@ def plot_emb_pred(x: np.ndarray, y: np.ndarray, clf: torch.nn.Module, precision:
 
 
 def plot_curve(data: dict, ax: matplotlib.axes.Axes = None, n_epochs: int = None, title: str = "",
-               model_name: str = "TIG", line_mode: callable = np.min, n_batches: int = None):
+               model_name: str = "TIG", line_mode: callable = np.min, n_batches: int = None,
+               l_pos: str = "right"):
     """ Plot curve, e.g. loss or metric.
 
         Args:
@@ -408,29 +414,36 @@ def plot_curve(data: dict, ax: matplotlib.axes.Axes = None, n_epochs: int = None
                 Possibilities: [np.min, np.max]
             n_batches: int
                 Number of batches. If provided it is used to determine the x-axis ticks.
-    	Return:
+            l_pos: str
+                String to position the legen. Options ["below"]
+        Return:
             matplotlib.figure.Figure: Figure of the plot.
     """
-    legend_pos = {"loc": 'upper left',
-                  "bbox_to_anchor": (1, 1)
-                  }
+    legend_pos = {
+        "loc": 'upper left',
+        "bbox_to_anchor": (1, 1)
+        }
 
-    # legend_pos = {"loc": 'upper left',
-    #               "bbox_to_anchor": (0, -0.2)
-    #               }
+    if l_pos == "below":
+        legend_pos = {
+            "loc": 'upper left',
+            "bbox_to_anchor": (0, -0.2)
+            }
     if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 3))
+        _, ax = plt.subplots(figsize=(10, 3))
         legend_pos = {
             "loc": 'upper center',
             "bbox_to_anchor": (0.5, -0.2)
         }
 
-    for i, name in enumerate(data):
+    ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+
+    for _, name in enumerate(data):
         line_data = data[name]
         if isinstance(line_data, list):
             line_data = np.array(line_data)
 
-        ax.plot(line_data, label='%.3f (%s)' % (line_data[-1], name))
+        p = ax.plot(line_data, label='%.3f (%s)' % (line_data[-1], name))
         ax.axhline(line_mode(line_data), 0, line_data.shape[0], lw=1, ls=":", c=p[-1].get_color(),
                    label='%.3f (%s)' % (line_mode(line_data), name))
 
@@ -445,30 +458,32 @@ def plot_curve(data: dict, ax: matplotlib.axes.Axes = None, n_epochs: int = None
     ax.figure.tight_layout()
 
     _, labels = ax.get_legend_handles_labels()
-    rows = 4 if len(labels) > 6 else 2
-    leg = ax.legend(**legend_pos, fancybox=True, shadow=True, ncol=2)
+    # rows = 4 if len(labels) > 6 else 2
+    ax.legend(**legend_pos, fancybox=True, shadow=True, ncol=2)
 
     return ax.figure
 
-# TODO: Check/Clean
-def plot_heatmap(matrix: np.ndarray, xlabel: str="", ylabel: str="", ticks: tuple=None,
-                 cbar_title: str="", im_args: dict={}, ax=None, figsize=(5, 5)):
-    """ Creates a single heatmap.
+
+def plot_heatmap(matrix: np.ndarray, xlabel: str = "", ylabel: str = "", num_ticks: tuple = None,
+                 cbar_title: str = "", im_args: dict = {}, ax: matplotlib.axes.Axes = None,
+                 figsize: tuple = (5, 5)):
+    """ Creates a single heatmap for a given matrix.
 
         Paramter:
             matrix: np.ndarray
-                Numpy array representing the matrix for the heatmap.
+                Numpy array representing the matrix that is shown as heatmap
             xlabel: str
                 Label for the x axis.
             ylabel: str
                 Label for the y axis.
-            ticks: tuple
+            num_ticks: tuple
                 Tuple of int containing at the first position the number of ticks for the x axis and
                 at the second position the number of ticks for the y axis.
             cbar_title: str
                 Title for the colorbar.
             img_args: dict
-                Dictionary with arguments for the axis. This arguments are forwarded to ax.set(**im_args).
+                Dictionary with arguments for the axis. This arguments are forwarded
+                to ax.set(**im_args).
             ax: matplotlib.Axis
                 Axis object if the heatmap should be plotted at a already existing axis.
         Return:
@@ -476,22 +491,22 @@ def plot_heatmap(matrix: np.ndarray, xlabel: str="", ylabel: str="", ticks: tupl
     """
 
     if ax is None:
-        fig, ax=plt.subplots(figsize=figsize)
+        fig, ax = plt.subplots(figsize=figsize)
         fig.tight_layout()
 
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
 
-    hm=ax.imshow(matrix, cmap="YlGn")
+    hm = ax.imshow(matrix, cmap="YlGn")
 
-    cbar=ax.figure.colorbar(hm, ax=ax, orientation="horizontal")
+    cbar = ax.figure.colorbar(hm, ax=ax, orientation="horizontal")
     cbar.ax.set_title(cbar_title)
 
-    if ticks is None:
-        xticks=matrix.shape[1]
-        yticks=matrix.shape[0]
+    if num_ticks is None:
+        xticks = matrix.shape[1]
+        yticks = matrix.shape[0]
     else:
-        xticks, yticks=ticks
+        xticks, yticks = num_ticks
 
     ax.set_xticks(np.arange(xticks))
     ax.set_yticks(np.arange(yticks))
@@ -505,227 +520,33 @@ def plot_heatmap(matrix: np.ndarray, xlabel: str="", ylabel: str="", ticks: tupl
 
     return ax.figure
 
-def plot_skeleton(x: np.array, y: np.array, A: np.array, ax=None):
-    """
+
+def plot_skeleton(x: np.ndarray, y: np.ndarray, A: np.ndarray, ax: matplotlib.axes.Axes = None):
+    """ Function to plot a skeleton based on the coordinates and an adjacency matrix.
+
+        Args:
+            x: np.ndarray
+                X coordinates of the skeleton.
+            y: np.ndarray
+                Y coordinates of the skeleton.
+            A: np.ndarray
+                Adjacency matrix of the skeleton.
+            ax: matplotlib.Axis
+                Axis object if the heatmap should be plotted at a already existing axis.
+        Return:
+            matplotlib.Figure, matplotlib.axes.Axes: Figure and axes of the plot.
     """
     if ax is None:
-        fig, ax=plt.subplots(figsize=(6, 6))
+        _, ax = plt.subplots(figsize=(6, 6))
 
-    # Edges
-    lines=[]
+    # Plot edges
+    lines = []
     for i in range(0, len(x)):  # pylint: disable=consider-using-enumerate
         for e_x, e_y in zip(x[np.where(A[i] == 1)], y[np.where(A[i] == 1)]):
             lines.append(ax.plot([x[i], e_x], [
                          y[i], e_y], linestyle='-', linewidth=0.5, color='#c4c4c4', markersize=0))
 
-    # Nodes
-    nodes=ax.scatter(x, y, marker='o', linewidth=0, zorder=3)
+    # Plot nodes
+    ax.scatter(x, y, marker='o', linewidth=0, zorder=3)
 
     return ax.figure, ax
-
-#### Consolidated Plots ####
-def plot_loss_metric(loss_cfg: dict, metric_cfg: dict, title="", model_name="TIG"):
-    """
-    """
-    fig=plt.figure(figsize=(10, 6))
-    gs=fig.add_gridspec(2, 1)
-
-    #### Loss Curve ####
-    if loss_cfg is not None:
-        ax=fig.add_subplot(gs[0])
-        loss_cfg["ax"]=ax
-        plot_curve(**loss_cfg)
-
-    #### Accuracy Curve ####
-    if metric_cfg is not None:
-        ax=fig.add_subplot(gs[1])
-        metric_cfg["ax"]=ax
-        plot_curve(**metric_cfg)
-
-    return fig
-
-def plot_eval_folder(folder: str, title: str="", precision: float=0.02):
-    """ Visual evaluation of an experiment (incl. embeddings, loss, metrics).
-        Creates easily an evaluation plot.
-
-        Args:
-            folder: str
-                Folder of the experiment.
-            title: str
-                Title of the plot. If the title is empty the folder name is used.
-            precision: float
-                Precision of the the grid for plotting the decision boundaries of the classifier.
-    """
-    data=np.load(f"{folder}embeddings.npz", allow_pickle=True)
-    x=data["x"]
-    y=data["y"]
-
-    tig_train_loss=np.load(f"{folder}TIG_train_losses.npy")
-    tig_val_loss=np.load(f"{folder}TIG_val_losses.npy")
-
-    mlp_train_loss=np.load(f"{folder}TIG_MLP.train_losses.npy")
-    mlp_val_loss=np.load(f"{folder}TIG_MLP.val_losses.npy")
-
-    mlp_train_metrics=np.load(f"{folder}TIG_MLP.train.metrics.npy")
-    mlp_val_metrics=np.load(f"{folder}TIG_MLP.val.metrics.npy")
-
-    clf=torch.load(f"{folder}TIG_MLP.pt")
-
-    # fig, ax = plt.subplots(2,2, figsize=(12, 10))
-    fig=plt.figure(figsize=(10, 8), constrained_layout=True)
-    gs=fig.add_gridspec(4, 2)
-
-    title=title if title != "" else folder
-    fig.suptitle(title, fontsize=12)
-
-    #### Plot Embeddings ####
-    ax=[fig.add_subplot(gs[0:2, 0]), fig.add_subplot(gs[0:2, 1])]
-    plot_emb(x, y, use_pca=(x.shape[1] > 2), ax=ax)
-    ax[0].set_title(
-        f"Embeddings in 2D space {'(PCA used)'if (x.shape[1] > 2) else ''}")
-    ax[1].set_title("Class distribution")
-
-    #### Plot Contour ####
-    ax=fig.add_subplot(gs[2:, 0])
-    plot_emb_pred(x, y, clf, precision, ax=ax)
-    ax.set_title("MLP Decision Boundaries")
-
-    #### Loss Curve ####
-    ax=fig.add_subplot(gs[2, 1])
-    args={
-        "data": {
-            "MLP Train Loss": mlp_train_loss,
-            "MLP Val Loss": mlp_val_loss,
-            "TIG Train Loss": tig_train_loss,
-            "TIG Val Loss": tig_val_loss,
-            },
-        "title": "Loss",
-        "ax": ax
-    }
-    plot_curve(**args)
-
-    #### Accuracy Curve ####
-    ax=fig.add_subplot(gs[3, 1])
-    args={
-        "data": {
-            "Top-1 (Train)": mlp_train_metrics[:, 0],
-            "Top-1 (Validation)": mlp_val_metrics[:, 0],
-            },
-        "title": "MLP Accuracy",
-        "ax": ax,
-        "line_mode": np.max
-    }
-    plot_curve(**args)
-
-def plot_eval(emb_cfg: dict, loss_cfg: dict, metric_cfg: dict=None, title="", model_name="TIG"):
-    """ 'Visual evaluation' plot. Consists of several plots to evaluate a model.
-    """
-    #### Set Up Figure ####
-    width_ratio=1.5
-    height=5
-    grid=(2, 2)
-    figsize=(height + (height * width_ratio), height)
-
-    fig=plt.figure(figsize=figsize)
-    gs=fig.add_gridspec(grid[0], grid[1], width_ratios=[1, width_ratio])
-
-    fig.suptitle(title, fontsize=12)
-
-    #### Plot Contour ####
-    ax=fig.add_subplot(gs[0:2, 0])
-    if "clf" in emb_cfg:
-        emb_cfg["ax"]=ax
-        del emb_cfg["mode"]
-        plot_emb_pred(**emb_cfg)
-        ax.set_title(f"{model_name} Decision Boundaries")
-    else:
-        emb_cfg["ax"]=ax
-        plot_emb(**emb_cfg)
-        ax.set_title("Embeddings")
-    # ax.set_aspect(1)
-
-    #### Loss Curve ####
-    ax=fig.add_subplot(gs[0, 1:])
-    loss_cfg["ax"]=ax
-    plot_curve(**loss_cfg)
-
-    #### Accuracy Curve ####
-    if metric_cfg is not None:
-        ax=fig.add_subplot(gs[1, 1:])
-        metric_cfg["ax"]=ax
-        plot_curve(**metric_cfg)
-
-    # fig.tight_layout()
-
-    return fig
-
-def plot_heatmaps(matrices: list, xlabels: list=[], ylabels: list=[],
-                  cbar_titles: list=[], ticks: list=[], im_args: list=[],
-                  loss_cfg=None, metric_cfg=None):
-    """ Plot heatmaps in a grid.
-
-        Args:
-            matrices: list
-                List of numpy matrices which contain the values for the heatmaps
-            xlabels: list
-                List of the labels for the x axis (aligned to the list of matrices).
-                I.e. the first entry corresponds to the label for the first matrix in the matrices list.
-                You can also handover a list with less entries than the matrices list. In this case the
-                labels are filled until the end of the list.
-            ylabels: list
-                List of labels for the y axis (aligned to the list of matrice, see xlabels).
-            cbar_titles: list
-                List for the colorbar title (aligned to the list of matrice, see xlabels).
-            ticks: list
-                List of tuples, where each tuple contains at the first position the number of xticks and
-                at the second position the number of yticks (aligned to the list of matrice, see xlabels).
-            im_args: list
-                List of dictionaries with configurations for the heatmap axis (aligned to the list of matrice, see xlabels).
-        Return:
-            matplotlib.Figure: Figure containing grid of heatmaps.
-    """
-
-    if not isinstance(matrices, list):
-        matrices=[matrices]
-
-    subplot_args={
-            "nrows": 1 if loss_cfg is None else 2,
-            "ncols": 1 if loss_cfg is None else 2,
-            "figsize": (6, 12 if loss_cfg is None else 6)
-        }
-
-    if len(matrices) == 2:
-        subplot_args["ncols"]=2 if loss_cfg is None else 3
-        subplot_args["figsize"]=(12 if loss_cfg is None else 20, 6)
-    elif len(matrices) > 2:
-        subplot_args["ncols"]=2 if loss_cfg is None else 3
-        subplot_args["nrows"]=2
-        subplot_args["figsize"]=(12 if loss_cfg is None else 20, 12)
-
-    fig, ax=plt.subplots(**subplot_args)
-    ax_emb=np.squeeze([ax[:, :None if loss_cfg is None else -1]]).flatten()
-
-    for i, matrix in enumerate(matrices):
-        args={
-            "cbar_title": cbar_titles[i] if len(cbar_titles) > i else None,
-            "xlabel": xlabels[i] if len(xlabels) > i else None,
-            "ylabel": ylabels[i] if len(ylabels) > i else None,
-            "ticks": ticks[i] if len(ticks) > i else None,
-            "im_args": im_args[i] if len(im_args) > i else None,
-        }
-        plot_heatmap(matrix, ax=ax_emb[i], **args)
-
-    for a in ax_emb[len(matrices):]:
-        a.set_axis_off()
-
-    if loss_cfg is not None:
-        loss_cfg["ax"]=ax[0, 2]
-        ax[1, 2].set_axis_off()
-        plot_curve(**loss_cfg)
-
-    if metric_cfg is not None:
-        metric_cfg["ax"]=ax[1, 2]
-        ax[1, 2].set_axis_on()
-        plot_curve(**metric_cfg)
-
-    return fig

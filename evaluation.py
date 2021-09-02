@@ -363,10 +363,30 @@ def get_metric_stats(experiments: [tuple], exp_repetitions: int = 5):
     return np.array(result)
 
 
-# TODO: Add docstring (Not used).
-def evaluate_pytorch_model(experiments: [tuple], device: str = "cuda", repeat=10,
-                           verbose=True, portion=1):
-    """ Not used. Exists for test purpose.
+def evaluate_pytorch_model(experiments: [tuple], device: str = "cuda", repeat: int = 10,
+                           verbose: bool = True, portion: int = 1):
+    """ Evaluate a single pytorch model (not the TIG model). 
+    
+        This method is not used.
+
+        Important: This method does not evaluate the TIG model since the TIG model is evaluated
+        by downstream models. One can use this methode for example for the STGCN model, which 
+        has the classifier included.
+
+        Args:
+            experiments: [tuple]
+                A list of tuples, where a tuple consists of the name of the experiment and 
+                the path.
+            device: str
+                Pytorch device, e.g. "cuda" or "cpu".
+            repeat: int
+                Number of repetitions of the evaluation.
+            verbose: bool
+                Flag to determine if the progress is printed to the console/output.
+            portion: int
+                Percentage defining which fraction of the data is used.
+        Return:
+            pd.DataFrame: Dataframe containing the results of the evaluation per experiment.
     """
     results = []
 

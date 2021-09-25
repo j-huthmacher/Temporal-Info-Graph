@@ -45,7 +45,7 @@ def bce_loss(enc_global: torch.Tensor, enc_local: torch.Tensor):
         The idea: Train the encoder to distinguish between positive and negative
         samples in a classification set up.
 
-        Parameters:
+        Args:
             enc_local: torch.Tensor
                 Represents the encoded node/patch level embedding.
                 Dimension (batch_size, embedding_dim, num_nodes).
@@ -56,7 +56,7 @@ def bce_loss(enc_global: torch.Tensor, enc_local: torch.Tensor):
                 Dimension (batch_size, embedding_dim)
                 I.e. we have per batch entry a single embedding of the corresponding graph.
         Return:
-            torch.Tensor: Tensor containing the (batch) loss (mutual information estimate).
+            torch.Tensor: Tensor of size (N, 1) containing the (batch) loss (mutual information estimate).
     """
     self = bce_loss
 
@@ -90,7 +90,7 @@ def bce_loss(enc_global: torch.Tensor, enc_local: torch.Tensor):
 def jensen_shannon_mi(enc_global: torch.Tensor, enc_local: torch.Tensor):
     """ Jensen-Shannon mutual information estimate.
 
-        Parameters:
+        Args:
             enc_local: torch.Tensor
                 Represents the encoded node/patch level embedding.
                 Dimension (batch_size, embedding_dim, num_nodes).
@@ -101,7 +101,7 @@ def jensen_shannon_mi(enc_global: torch.Tensor, enc_local: torch.Tensor):
                 Dimension (batch_size, embedding_dim)
                 I.e. we have per batch entry a single embedding of the corresponding graph.
         Return:
-            torch.Tensor: Tensor containing the (batch) loss (mutual information estimate).
+            torch.Tensor: Tensor of size (N, 1) containing the (batch) loss (mutual information estimate).
     """
     #### For Tracking ####
     self = jensen_shannon_mi
@@ -139,7 +139,7 @@ def get_positive_expectation(p_samples: torch.Tensor, measure: str = "JSD", aver
 
         @source: https://github.com/fanyun-sun/InfoGraph/blob/master/unsupervised/losses.py
 
-        Paramters:
+        Args:
             p_samples: torch.Tensor
                 Tensor of dimension (num_graphs, num_nodes*num_pos_pairs).
                 I.e. the tensor contains per column i the positive samples (stacked together if
@@ -184,7 +184,7 @@ def get_negative_expectation(n_samples: torch.Tensor, measure: str ="JSD", avera
 
         @source: https://github.com/fanyun-sun/InfoGraph/blob/master/unsupervised/losses.py
 
-        Paramters:
+        Args:
             p_samples: torch.Tensor
                 Tensor of dimension (num_graphs, num_nodes*num_pos_pairs).
                 I.e. the tensor contains per column i the negative samples (stacked together if

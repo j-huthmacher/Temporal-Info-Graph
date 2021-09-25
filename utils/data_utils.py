@@ -53,13 +53,13 @@ def pad_zero_mask(shape: torch.Tensor, idx: torch.Tensor, device: str = "cuda"):
     return final_mask
 
 
-def get_normalized_adj(A: torch.Tensor):
+def get_normalized_adj(A: np.ndarray):
     """ Returns the degree normalized adjacency matrix.
 
         @source: https://github.com/FelixOpolka/STGCN-PyTorch/blob/846d511416b209c446310c1e4889c710f64ea6d7/utils.py#L26
 
         Args:
-            A: torch.Tensor
+            A: numpy.ndarray
                 Adjacency matrix which should be normalized.
     """
     A = A + np.diag(np.ones(A.shape[0], dtype=np.float32))

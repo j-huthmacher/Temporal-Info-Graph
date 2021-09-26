@@ -1,7 +1,6 @@
-  
-# The based unit of graph convolutional networks.
-# This is the original implementation for ST-GCN papers.
-
+""" Original implementation from: https://github.com/open-mmlab/mmskeleton/blob/b4c076baa9e02e69b5876c49fa7c509866d902c7/mmskeleton/ops/st_gcn/gconv_origin.py
+    Paper: https://arxiv.org/abs/1801.07455
+"""
 import torch
 import torch.nn as nn
 
@@ -50,6 +49,9 @@ class ConvTemporalGraphical(nn.Module):
                               stride=(t_stride, 1),
                               dilation=(t_dilation, 1),
                               bias=bias)
+        # self.conv = nn.Conv2d(in_channels,
+        #                       out_channels,
+        #                       kernel_size=1)
 
     def forward(self, x, A):
         assert A.size(0) == self.kernel_size
@@ -59,6 +61,13 @@ class ConvTemporalGraphical(nn.Module):
         n, kc, t, v = x.size()
         x = x.view(n, self.kernel_size, kc // self.kernel_size, t, v)
         x = torch.einsum('nkctv,kvw->nctw', (x, A))
+
+        # A = A[0, : , :]
+        # x = torch.einsum("ntjc, ji -> ncti", [x.permute(0, 2, 3, 1), A])
+        # # In: Out: (batch_size, features, nodes, time)
+        # X = torch.matmul(X, self.W).permute(0, 3, 1, 2) # This is much more expensive than the convolutional
+
+        # x = self.conv(x) # Convolutiom is about 10x faster!!!
 
         return x.contiguous()
 

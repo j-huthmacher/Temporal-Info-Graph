@@ -1,3 +1,6 @@
+""" Original implementation from: https://github.com/open-mmlab/mmskeleton/blob/b4c076baa9e02e69b5876c49fa7c509866d902c7/mmskeleton/ops/st_gcn/graph.py
+    Paper: https://arxiv.org/abs/1801.07455
+"""
 import numpy as np
 
 

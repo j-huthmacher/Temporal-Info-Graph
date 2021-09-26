@@ -1,3 +1,7 @@
+""" Original implementation from: https://github.com/open-mmlab/mmskeleton/blob/master/mmskeleton/models/backbones/st_gcn_aaai18.py
+    Paper: https://arxiv.org/abs/1801.07455
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -57,13 +61,13 @@ class ST_GCN_18(nn.Module):
         kwargs0 = {k: v for k, v in kwargs.items() if k != 'dropout'}
         self.st_gcn_networks = nn.ModuleList((
             st_gcn_block(in_channels,
-                         128,
+                         256,
                          kernel_size,
                          1,
                          residual=False,
                          **kwargs0),
-            # st_gcn_block(64, 128, kernel_size, 1, **kwargs),
-            st_gcn_block(128, 256, kernel_size, 1, **kwargs),
+            # st_gcn_block(32, 32, kernel_size, 1, **kwargs),
+            # st_gcn_block(32, 256, kernel_size, 1, **kwargs),
 #             st_gcn_block(64, 64, kernel_size, 1, **kwargs),
 #             st_gcn_block(64, 128, kernel_size, 2, **kwargs),
 #             st_gcn_block(128, 128, kernel_size, 1, **kwargs),
@@ -210,4 +214,3 @@ class st_gcn_block(nn.Module):
         x = self.tcn(x) + res
 
         return self.relu(x)
-    

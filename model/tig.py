@@ -1,4 +1,4 @@
-""" Implementation of a the Temporal Info Graph.
+""" Implementation of a the Temporal Info Graph an related layer.
 """
 # pylint: disable=not-callable, undefined-loop-variable, too-many-instance-attributes
 from typing import Any

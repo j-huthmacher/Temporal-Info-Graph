@@ -1,9 +1,11 @@
-from model.temporal_info_graph import SpectralConvolution, FF
-from data.data_utils import get_normalized_adj
-
+""" Alternative implementation of the TIG by using an LSTM to process the time dimension.
+"""
+# pylint: disable=not-callable
 import torch
-from torch import nn 
+from torch import nn
 
+from model.tig import SpectralConvolution
+from utils.data_utils import get_normalized_adj
 
 
 class TemporalInfoGraphLSTM(nn.Module):
@@ -11,40 +13,30 @@ class TemporalInfoGraphLSTM(nn.Module):
         the time component.
     """
 
-    def __init__(self, ch_in = 2, hidden_size=64, num_layers=2,
+    def __init__(self, ch_in: int = 2, hidden_size: int = 64, num_layers: int = 2,
                  batch_norm: bool = True, A: torch.Tensor = None,
                  self_connection: bool = True):
         """ Initilization of the TIG model.
 
-            Parameter:
-                dim_in: tuple
-                    Represents a tuple with the dimensions of the input data, i.e. height and width.
-                    In the temporal graph set up this would corresponds to (nodes, features).
-                    Those values are needed to calculate the kernel for the last temporal layer,
-                    which covers the whole input to finally reduce the data to a "single timestamp".
-                architecture: [tuple]
-                    [(c_in, c_out, spec_out, out, kernel)]
+            Args:
                 c_in: int
                     Input channels of the data, i.e. features.
-                c_out: int
-                    Output channels after the first temporal convolution.
-                spec_out: int
-                    Spectral output channels, i.e. after the spectral convolution.
-                out: int
-                    Overall output channels, i.e. after last temporal convoltion.
-                tempKernel: int or tuple
-                    Kernel for the first temporal convolution. At the moment the kernel of the
-                    second convolution is automatically calculated to convolve always over all
-                    remaining time steps.
-                activation: str
-                    Determines which activation function is used. Options: ['leakyReLU', 'ReLU']                
+                hidden_size: int
+                    Number of hidden channels in the LSTM.
+                num_layers: int
+                    Number of layers of the LSTM.
+                batch_norm: bool
+                    Falg to determine if batch norm is applied.
+                A: torch.Tensor
+                    Adjacency matrix.
+                self_connection: bool
+                    Falg to determine if self-connections are used in the architecture.
         """
         super().__init__()
 
-        #### Model Creation #####
+        # Model Creatio
         self.layers = []
         self.edge_weights = nn.ParameterList()
-        # self.embedding_dim = architecture[-1][-2]
 
         if A is not None and self_connection:
             A = get_normalized_adj(A)
@@ -70,7 +62,7 @@ class TemporalInfoGraphLSTM(nn.Module):
             Consists of a initial temporal convolution, followed by an spectral
             convolution and finalized with another temporal convolution.
 
-            Parameters:
+            Args:
                 X: torch.Tensor
                     Input matrix, i.e. feature matrix of the nodes.
                     Dimension (batch, features, nodes, time)
@@ -85,7 +77,8 @@ class TemporalInfoGraphLSTM(nn.Module):
             X = torch.tensor(X, dtype=torch.float32)
 
         # Features could be twice or more!
-        # In:  (batch, features, nodes, time), Out: (time, batch * nodes, features)
+        # In:  (batch, features, nodes, time)
+        # Out: (time, batch * nodes, features)
         N, C, V, T = X.shape
         X = X.type('torch.FloatTensor').to("cuda")
 
@@ -100,7 +93,7 @@ class TemporalInfoGraphLSTM(nn.Module):
         Z2 = self.gcn2(Z1, self.A)
 
         # Concatenate the raw input, 1-hop convolution, and 2-hop convolution
-        X = torch.cat([X, Z1, Z2], dim = 1)
+        X = torch.cat([X, Z1, Z2], dim=1)
         N, C, V, T = X.shape
         # In:  (batch, cat_features, nodes, time), Out: (time, batch * nodes, cat_features)
         X = X.permute(3, 0, 2, 1).reshape(T, N * V, C)
@@ -111,15 +104,8 @@ class TemporalInfoGraphLSTM(nn.Module):
         Z = Z[-1].view(N, -1, V)
 
         # In: (batch_size, ch_out, nodes) Out: (batch_size, ch_out)
-        global_Z = self.readout(Z.permute(0,2,1).reshape(-1, Z.shape[2])).view(Z.shape[0], -1)  # 
+        global_Z = self.readout(Z.permute(0, 2, 1).reshape(-1, Z.shape[2])).view(Z.shape[0], -1)
         local_Z = Z
 
         # Remove "empty" dimensions, i.e. dim = 1
         return torch.squeeze(global_Z, dim=-1), torch.squeeze(local_Z, dim=-1)
-
-    @property
-    def num_paramters(self):
-        """ Number of paramters of the model.
-        """
-        # return(summary(self, (self.c_in, self.dim_in[0], self.dim_in[1])))
-        return f"Parameters {sum(p.numel() for p in self.parameters())}"

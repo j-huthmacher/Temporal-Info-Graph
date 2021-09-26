@@ -42,7 +42,7 @@ def load_eval_data(config: dict, path: str = None, num_classes: int = 50,
         x = np.load(path + "embeddings_full.npz")["x"]
         y = np.load(path + "embeddings_full.npz")["y"]
     else:
-        data_cfg = {**config, **{"path": "../data/"}}
+        data_cfg = {**config, **{"path": "./data/"}}
 
         data = TIGDataset(**data_cfg)
 
@@ -281,9 +281,10 @@ def run_evaluation(x_in: np.ndarray, y_in: np.ndarray, baseline: str = "svm",
         if portion < 1:
             # x, y = x[idx], y[idx]
             # x, y = get_portion(x, y, portion)
+            random_state = (i if portion_state is None else portion_state)
             _, x, _, y = train_test_split(x_in, y_in, stratify=y_in,
                                           test_size=portion,
-                                          random_state=i if portion_state is None else portion_state)
+                                          random_state=random_state)
         else:
             x, y = x_in, y_in
 
@@ -309,8 +310,8 @@ def run_evaluation(x_in: np.ndarray, y_in: np.ndarray, baseline: str = "svm",
             top1.append(accuracy_score(y_test, model.predict(x_test)))
             top5.append(-1)
 
-        top1, top5 = np.mean(top1)*100, np.mean(top5)*100
-        pbar.set_description(f"Top1: {'{:.4f}'.format(top1)} | Top2: {'{:.4f}'.format(top5)}")
+        top1_mean, top5_mean = np.mean(top1) * 100, np.mean(top5) * 100
+        pbar.set_description(f"Top1: {'{:.4f}'.format(top1_mean)} | Top2: {'{:.4f}'.format(top5_mean)}")
 
     if ret_model:
         return top1, top5, model

@@ -66,7 +66,7 @@ The easiest way to evalute a trained model within the TIG framework is to use th
 
 A minimal example for evaluating a model is
 ```bash
-python main.py --eval .\experiments\models\TIG_2_Classes_BCE_EW\50epochs\ --config 2classesSmallPortion
+python main.py --eval .\experiments\models\TIG_2_Classes_BCE_EW\50epochs\ --config 2classesSmallPortion --model_name TIG
 ```
 
 For this it is advisable to use a Jupyter Notebook (here is an example notebook).

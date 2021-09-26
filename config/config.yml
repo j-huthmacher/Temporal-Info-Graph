@@ -25,14 +25,14 @@ multi_layer:
     optimizer:
       lr: 0.01
 
-single_layer:
+single_layer_ntu:
   data:
-    name: ntu_rgb_d_xsub #stgcn
+    name: ntu_rgb_d_xsub
     path: ./data/
     verbose: True
   stratify:
     num: 50
-    num_samples: 632 #994
+    num_samples: 632
     mode: 1
   loader: 
     batch_size: 128
@@ -51,6 +51,31 @@ single_layer:
     optimizer:
       lr: 0.01
 
+single_layer:
+  data:
+    name: stgcn_50_classes
+    path: ./data/
+    verbose: True
+  stratify:
+    num: 50
+    num_samples: 994
+    mode: 1
+  loader: 
+    batch_size: 128
+  loss: bce
+  emb_tracking: 10
+  model:
+    multi_scale: False
+    edge_weights: True
+    architecture: [
+      [2, 32, 32, 72]
+   ]
+  training:
+    verbose: True
+    n_epochs: [ 50, 100, 200 ]
+    optimizer_name: Adam
+    optimizer:
+      lr: 0.01
 
 small_complex_encoder:
   data:
@@ -71,22 +96,6 @@ small_complex_encoder:
     optimizer_name: Adam
     optimizer:
       lr: 0.01
-
-evaluate_experiment:
-  exp:
-    path: ./output/20012021_1303_debug_small_complex_encoder/
-  mode: sklearn
-  classifier: 
-    in_dim: 256
-    hidden_layers: [128, 512, 256]
-  classifier_training:
-    verbose: True
-    n_epochs: 50
-    optimizer_name: SGD
-    optimizer:
-      lr: 0.001
-      momentum: 0.9
-    gradient_clipping: 0.2
 
 single_layer_local:
   repetitions: 1

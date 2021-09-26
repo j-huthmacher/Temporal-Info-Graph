@@ -1,0 +1,3 @@
+,Model,Top-1 Accuracy,Top-1 Std.,Top-1 Relative,Top-5 Accuracy,Top-5 Std.,Top-5 Relative,# Epochs,Architecture,# TIG Parameter,Embedding Dimension,# Downstream Parameter,Objective,Model Cfg,Portion,Batch Size,Num Samples,Samples Per Class,Classes,Timestamp
+0,Model + mlp,83.6,5.27636238330917,0.7999999999999972,-100.0,0.0,0.0,100,"[[2, 32, 32, 72]]",28756,72,172,bce,"{'multi_scale': False, 'edge_weights': True, 'architecture': [[2, 32, 32, 72]]}",0.1,128,198,994,2,2021-08-03 22:05:18.029042
+1,mlp,82.8,4.833218389437829,0.0,-100.0,0.0,0.0,-,-,-,72,172,-,-,0.1,-,198,994,2,2021-08-03 22:05:18.029042

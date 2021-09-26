@@ -8,6 +8,9 @@ from pathlib import Path
 from datetime import datetime
 import argparse
 
+import warnings
+warnings.filterwarnings("ignore")
+
 import yaml
 import torch
 

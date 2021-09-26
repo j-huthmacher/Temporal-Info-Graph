@@ -1,37 +1,31 @@
-# pylint: disable=line-too-long
 """ Main file.
 
     Reflects the entry point for the TIG framework and provides the CLI.
 """
+# pylint: disable=line-too-long
 import json
 from pathlib import Path
 from datetime import datetime
 import argparse
 
 import yaml
-import numpy as np
-from sklearn.metrics import top_k_accuracy_score
-from tqdm import trange
 import torch
 
 from utils.tig_data_set import TIGDataset
-from baseline import get_model
 from processor import train_tig, train_stgcn
 from config.config import create_logger
 from evaluation import evaluate_experiments
 
-#### Set Up CLI ####
+# Set Up CLI
 parser = argparse.ArgumentParser(prog='tig', description='Temporal Info Graph')
 
-#### Model/Experiment CLI ####
+# Model/Experiment CLI
 parser.add_argument('--config', dest='config',
-                    help=('Defines which configuration should be usd. Can be a name,'
+                    help=('Defines which configuration should be usd. Can be a name or'
                           ' .json or .yml file. Depending on wich execution mode is selected the '
                           'config belongs to train config or evaluation config.'))
 parser.add_argument('--name', dest='name', default="TIG_Experiment",
                     help='Name of the experiment.')
-parser.add_argument('--tracking', dest='tracking', default="remote",
-                    help='[remote, local], default: remote')
 parser.add_argument('--train', dest='train', action='store_true',
                     help='Flag to select trainings mode.')
 parser.add_argument('--model', dest='model', default="tig",
@@ -42,15 +36,15 @@ parser.add_argument('--eval', dest='eval',
 parser.add_argument('--model_name', dest='model_name', default="Model",
                     help='Name of the model that is displayed in the evaluation output.')
 
-#### Data CLI ####
+# Data CLI
 parser.add_argument('--prep_data', dest='prep_data', action="store_true",
-                    help='Prepare data.')
-
+                    help=('Preprocess loose files from the kinetics skeleton data set.'
+                          'Important: Set the right path to the directory in the main.py'
+                          'Default output folder: ./preprocessed_data/'))
 
 args = parser.parse_args()
 
-
-#### Load Configuration ####
+# Load Configuration
 name = args.name
 config = {}
 if args.config is not None:
@@ -69,7 +63,7 @@ if args.config is not None:
 else:
     print("No config provided.")
 
-#### Execute Training ####
+# Execute Training
 if args.train:
     if "name" in config:
         name += f"_{config['name']}"  # Only for readability
@@ -78,7 +72,7 @@ if args.train:
     torch.manual_seed(0)
     config["seed"] = 0
 
-    #### Tracking Location ####
+    # Tracking Location
     date = datetime.now().strftime("%d%m%Y_%H%M")
     path_init = f"./output/{date}_{name}/"
     Path(path_init).mkdir(parents=True, exist_ok=True)
@@ -95,6 +89,7 @@ if args.train:
 
         config["training"]["n_epochs"] = epochs
 
+        # Default number of repetitions.
         repetitions = 5
         if "repetitions" in config:
             repetitions = config["repetitions"]
@@ -105,7 +100,7 @@ if args.train:
             path = path_init + f"{epochs}epochs/{i}/"
             Path(path).mkdir(parents=True, exist_ok=True)
 
-            # Depending on the model different training methods are needed 
+            # Depending on the model different training methods are required
             if args.model == "tig":
                 train_tig(config, path)
             elif args.model == "stgcn":
@@ -115,7 +110,7 @@ if args.train:
 
     log.info("Training done. Output path: %s", str(path))
 
-#### Execute Evaluation ####
+# Execute Evaluation
 elif args.eval:
     results = evaluate_experiments([(args.model_name, args.eval)], **config)
 
@@ -126,16 +121,16 @@ elif args.eval:
 
 
 elif args.prep_data:
-    # Was used to prepare the loosefiles from the kinetics skeleton data set.
+    # Was used to prepare the loose files from the kinetics skeleton data set.
 
-    # Change paths!
+    # CHANGE PATHS!
     data_paths = [
         "local/path/to/kinetics-skeleton/kinetics_train/",
         "local/path/to/kinetics-skeleton/kinetics_val/"
     ]
 
     # Define output location
-    output = "./"
+    output = "./preprocessed_data/"
 
     log.info("Process data")
 

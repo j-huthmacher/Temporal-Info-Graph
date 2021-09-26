@@ -1,0 +1,27 @@
+2classesSmallPortion:
+  num_classes: 2
+  portion: 0.1
+  verbose: False
+  repeat_baseline: 5
+  baseline: mlp
+
+2classesFullPortion:
+  num_classes: 2
+  portion: 1
+  verbose: False
+  repeat_baseline: 5
+  baseline: mlp
+
+10classesSmallPortion:
+  num_classes: 10
+  portion: 0.1
+  verbose: False
+  repeat_baseline: 5
+  baseline: mlp
+
+10classesFullPortion:
+  num_classes: 10
+  portion: 1
+  verbose: False
+  repeat_baseline: 5
+  baseline: mlp

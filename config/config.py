@@ -1,21 +1,10 @@
-""" This file contains gobal configurations.
-
-    @author: jhuthmacher
+""" This file is used to create a global logger.
 """
-
 from datetime import datetime
 import logging
 import os
 
 from pathlib import Path
-
-
-##################
-# Shared Configs #
-##################
-local_log = True
-
-##################
 
 path = "logs/"
 Path(path).mkdir(parents=True, exist_ok=True)
@@ -36,9 +25,9 @@ if not log.handlers:
     fh = logging.FileHandler(f'{path}TIG_{datetime.now().date()}.log')
     fh.setLevel(logging.INFO)
 
-        # create formatter
+    # create formatter
     formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s',
-                                     datefmt='%d.%m.%Y %H:%M:%S')
+                                  datefmt='%d.%m.%Y %H:%M:%S')
 
     # add formatter to ch
     ch.setFormatter(formatter)
@@ -48,8 +37,18 @@ if not log.handlers:
     log.addHandler(ch)
     log.addHandler(fh)
 
-def create_logger(fpath, name = 'TIG_Logger', suffix = ""):
-    """
+def create_logger(fpath: str, name: str = 'TIG_Logger', suffix: str = ""):
+    """ Function to create a logger and set unified configurations.
+
+        Args:
+            fpath: str
+                File path where the logs are stored.
+            name: str
+                Name of the logger.
+            suffix: str
+                Suffix that is used for the log file.
+        Return:
+            logger object
     """
     Path(fpath).mkdir(parents=True, exist_ok=True)
 
@@ -70,9 +69,8 @@ def create_logger(fpath, name = 'TIG_Logger', suffix = ""):
         ch_.setLevel(logging.INFO)
 
         # create formatter
-
         formatter_ = logging.Formatter('%(asctime)s %(levelname)s: %(message)s',
-                                     datefmt='%d.%m.%Y %H:%M:%S')
+                                       datefmt='%d.%m.%Y %H:%M:%S')
 
         # add formatter to ch
         ch_.setFormatter(formatter_)
@@ -82,14 +80,4 @@ def create_logger(fpath, name = 'TIG_Logger', suffix = ""):
         log_.addHandler(ch_)
         log_.addHandler(fh_)
 
-        # log.propagate = False
-
     return log_
-    # Custom logger configuration.
-    # log.basicConfig(format='%(asctime)s %(levelname)s: %(message)s',
-    #                 datefmt='%d.%m.%Y %H:%M:%S',
-    #                 level=log.INFO,
-    #                 handlers=[
-    #                     log.FileHandler(f'logs/DH_{datetime.now().date()}.log'),
-    #                     log.StreamHandler()
-    #                 ])

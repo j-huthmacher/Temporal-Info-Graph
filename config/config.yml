@@ -1,0 +1,153 @@
+multi_layer:
+  data:
+    name: stgcn
+    path: ./data/
+    verbose: True
+  stratify:
+    num: 2
+    num_samples: 994
+    mode: 1
+  loader: 
+    batch_size: 1024
+  loss: jsd
+  emb_tracking: 10
+  model:
+    multi_scale: False
+    edge_weights: True
+    architecture: [
+      [2, 32, 32, 32],
+      [32, 32, 32, 72]
+   ]
+  training:
+    verbose: True
+    n_epochs: [ 100 ]
+    optimizer_name: Adam
+    optimizer:
+      lr: 0.01
+
+single_layer_ntu:
+  data:
+    name: ntu_rgb_d_xsub
+    path: ./data/
+    verbose: True
+  stratify:
+    num: 50
+    num_samples: 632
+    mode: 1
+  loader: 
+    batch_size: 128
+  loss: bce
+  emb_tracking: 10
+  model:
+    multi_scale: False
+    edge_weights: True
+    architecture: [
+      [3, 32, 32, 72]
+   ]
+  training:
+    verbose: True
+    n_epochs: [ 50, 100, 200 ]
+    optimizer_name: Adam
+    optimizer:
+      lr: 0.01
+
+single_layer:
+  data:
+    name: stgcn_50_classes
+    path: ./data/
+    verbose: True
+  stratify:
+    num: 50
+    num_samples: 994
+    mode: 1
+  loader: 
+    batch_size: 128
+  loss: bce
+  emb_tracking: 10
+  model:
+    multi_scale: False
+    edge_weights: True
+    architecture: [
+      [2, 32, 32, 72]
+   ]
+  training:
+    verbose: True
+    n_epochs: [ 50, 100, 200 ]
+    optimizer_name: Adam
+    optimizer:
+      lr: 0.01
+
+small_complex_encoder:
+  data:
+    name: stgcn_50_classes
+    path: ./data/
+    verbose: True
+    lim: 2000
+  loader:
+    batch_size: 16
+    shuffle: True
+  emb_tracking: 10
+  loss: bce
+  model: 
+    multi_scale: False
+  training:
+    verbose: True
+    n_epochs: 200
+    optimizer_name: Adam
+    optimizer:
+      lr: 0.01
+
+single_layer_local:
+  repetitions: 1
+  data:
+    name: stgcn_50_classes
+    path: ./data/
+    verbose: True
+  stratify:
+    num: 2
+    num_samples: 20
+    mode: 1
+  loader: 
+    batch_size: 64
+  loss: bce
+  emb_tracking: 10
+  model:
+    multi_scale: False
+    edge_weights: True
+    architecture: [
+      [2, 32, 32, 2]
+   ]
+  training:
+    verbose: True
+    n_epochs: [ 50 ]
+    optimizer_name: Adam
+    optimizer:
+      lr: 0.01
+
+multi_layer_local:
+  repetitions: 1
+  data:
+    name: stgcn_50_classes
+    path: ./data/
+    verbose: True
+  stratify:
+    num: 3
+    num_samples: 30
+    mode: 1
+  loader: 
+    batch_size: 32
+  loss: bce
+  emb_tracking: None
+  model:
+    multi_scale: False
+    edge_weights: True
+    architecture: [
+      [2, 32, 32, 32],
+      [32, 32, 32, 128]
+   ]
+  training:
+    verbose: True
+    n_epochs: [ 500]
+    optimizer_name: Adam
+    optimizer:
+      lr: 0.01

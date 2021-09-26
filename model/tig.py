@@ -1,24 +1,42 @@
 """ Implementation of a the Temporal Info Graph.
-
-    @author: j-huthmacher
 """
+# pylint: disable=not-callable, undefined-loop-variable, too-many-instance-attributes
 from typing import Any
-from math import floor
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from data.data_utils import get_normalized_adj, pad_zero_mask, pad_zero_idx
-
-from model.st_gcn_aaai18.stgcn_graph import Graph
+from utils.data_utils import get_normalized_adj
 
 class ConstZeroLayer(torch.nn.Module):
-    def forward(self, x):
+    """ Neural net layer that returns constantly a zero.
+    """
+    # pylint: disable=unused-argument, no-self-use
+    def forward(self, x: torch.Tensor):
+        """ Forward pass of the layer.
+
+            Args:
+                x: torch.Tensor
+                    This input is not used since the layer returns always a 0.
+            Return:
+                torch.Tensor: A 1x1 tensor with a 0 as value.
+        """
         return torch.tensor([0])
 
+
 class FF(nn.Module):
-    def __init__(self, input_dim):
+    """ Traditional Feed forward network with the following architecture.
+
+        Linear -> ReLU -> Linear -> ReLU -> Linear -> ReLU
+    """
+    def __init__(self, input_dim: int):
+        """
+            Args:
+                input_dim: int
+                    Input dimenstion of the layer. All intermediate layer will have
+                    the same dimension.
+        """
         super().__init__()
         self.block = nn.Sequential(
             nn.Linear(input_dim, input_dim),
@@ -30,14 +48,37 @@ class FF(nn.Module):
         )
         self.linear_shortcut = nn.Linear(input_dim, input_dim)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
+        """ Forward pass of the network.
+
+            After all layers another simple linear layer is added to the output.
+
+            Args:
+                x: torch.Tensor
+                    Input tensor.
+            Return:
+                torch.Tensor: Output tensor with the dimension as the input.
+        """
         return self.block(x) + self.linear_shortcut(x)
 
 
 class TemporalConvolution(nn.Module):
+    """ Implementation of a temporal convolution layer.
+    """
 
     def __init__(self, c_in: int, c_out: int = 1, kernel: Any = 1):
-
+        """
+            Args:
+                c_in: int
+                    Number of input channel.
+                c_out: int
+                    Number of output channels.
+                kernel: Any 
+                    The temporal kernal that is applied, it defines how many time stamps
+                    are consider in one convolution. Either represented by an intenger
+                    or a tuple, in case it is an integer the first dimension of the 2D Kernel 
+                    is one.                
+        """
         super().__init__()
 
         # Set paramters
@@ -48,6 +89,7 @@ class TemporalConvolution(nn.Module):
         if isinstance(self.kernel, int):
             self.kernel = (1, self.kernel)
 
+        # The right padding is used to get a proper temporal convolution
         padding = ((self.kernel[1] - 1) // 2, 0)
         self.tcn = nn.Sequential(
             nn.Conv2d(
@@ -60,12 +102,20 @@ class TemporalConvolution(nn.Module):
             nn.Dropout(0.5),
         )
 
-        #### TO DEVICE #####
+        # To device
         # self.conv = self.conv.to(self.device)
 
         self.relu = nn.LeakyReLU()
 
     def forward(self, X: torch.Tensor):
+        """ Forward pass of the layer.
+
+            Args:
+                X: torch.Tensor
+                    Input with dim (batch, features, time, nodes) for the layer.
+            Return:
+                torch.Tensor: Output of the layer.
+        """
 
         # In: (batch, features, time, nodes)
         X = self.tcn(X)
@@ -74,7 +124,21 @@ class TemporalConvolution(nn.Module):
 
 
 class SpectralConvolution(nn.Module):
-    def __init__(self, c_in: int , c_out: int = 2, activation: str = "LeakyReLU",A = None):
+    """ Implementation of the spectral convolution.
+    """
+    def __init__(self, c_in: int, c_out: int = 2, activation: str = "LeakyReLU",
+                 A: torch.Tensor = None):
+        """
+            Args:
+                c_in: int
+                    Number of input channels.
+                c_out: int
+                    Number of output channels.
+                activation: str
+                    Activation function for the final output. Not used yet.
+                A: torch.Tensor
+                    Adjacency matrix.
+        """
         super().__init__()
 
         self.c_in = c_in
@@ -85,24 +149,63 @@ class SpectralConvolution(nn.Module):
                               self.c_out,
                               kernel_size=(1, 1))
 
+        # Not used!
         self.activation = getattr(nn, activation)()
 
     def forward(self, X: torch.Tensor, A: torch.Tensor = None):
+        """ Forward pass.
 
+            Args:
+                X: torch.Tensor
+                    Input tensor.
+                A: torch.Tensor (optional)
+                    Adjacency matrix. Normally the adjacency is set via the
+                    initialization.
+            Return:
+                torch.Tensor: Output tensor.
+        """
         if A is None:
             A = self.A
 
         X = self.conv(X)
 
+        # This is how the spectral convolution is working
         X = torch.einsum('nctv,vw->nctw', (X, A))
 
         return X.contiguous()
 
 
 class TemporalInfoGraph(nn.Module):
-    def __init__(self, architecture: list = None, A: torch.Tensor = None,
+    """ Implementation of the Temporal Info Graph model.
+    """
+    def __init__(self, architecture: [int] = None, A: torch.Tensor = None,
                  mode: str = "encode", edge_weights: bool = True,
-                 multi_scale: bool = False, num_classes: int=50):
+                 multi_scale: bool = False, num_classes: int = 50):
+        """
+            Args:
+                architecture: list
+                    List of integers that defines the architecture of the model.
+                    The Model has always the structure: TempConv -> SpecConv -> TempConv
+                    It is defined as follows:
+                        architecture[0] = Input channels of first TempConv
+                        architecture[1] = Output channels of the first TempConv
+                                          (i.e. also input of SpecConv)
+                        architecture[2] = Output channels of the SpecConv
+                                          (2nd layer, i.e. also the input of the 2nd TempConv)
+                        architecture[3] = Final output dimension
+                A: torch.Tensor
+                    Adjacency matrix.
+                mode: str
+                    The mode how the model is applied, either "encode" when the model shout output
+                    encodings or "classify" when the model should output class labels.
+                edge_weights: bool
+                    Falg to determine if edge weights are learned.
+                multi_scale: bool
+                    Falg to determine if the discrimination should consider encoding of multiple
+                    scales, i.e. from different layers.
+                num_classes: int
+                    Number of classes in the data set. This is only needed in mode "classify".
+        """
 
         super().__init__()
 
@@ -115,13 +218,13 @@ class TemporalInfoGraph(nn.Module):
 
         if architecture is None:
             # Fits in 4 GB Memory
-            # Default Plain architecture without EW and MS
+            # Default Plain architecture without EW (edge weights) and MS (multi scale)
             architecture = [
                 (2, 32, 32, 128),
                 (128, 128, 128, 256)
             ]
 
-        #### Initial Data Normalization ####
+        # Initial Data Normalization
         in_ch = architecture[0][0]
         self.data_norm = nn.BatchNorm1d(in_ch * A.shape[0])
 
@@ -130,7 +233,6 @@ class TemporalInfoGraph(nn.Module):
         self.bn_layers = []
         self.ms_layers = []
 
-        
 
         for c_in, c_out, spec_out, out in architecture:
 
@@ -185,12 +287,22 @@ class TemporalInfoGraph(nn.Module):
                                      nn.Dropout(0.5),
                                      nn.BatchNorm2d(out))
 
+    # pylint: disable=inconsistent-return-statements
     def forward(self, X: torch.Tensor):
+        """ Forward pass.
 
+            Args:
+                X: torch.Tensor
+            Return:
+                torch.Tensor: Output tensor.
+        """
+
+        # Split multiple persons in one frame into separate samples
         N, C, T, V, M = X.size()
         X = X.permute(0, 4, 3, 1, 2).contiguous()
         X = X.view(N * M, V * C, T)
 
+        # Normalize the data
         X = self.data_norm(X)
         X = X.view(N, M, V, C, T)
         X = X.permute(0, 1, 3, 4, 2).contiguous()
@@ -199,12 +311,13 @@ class TemporalInfoGraph(nn.Module):
         X = self.relu(X)
 
         concat_scales = []
-        
+
         if not hasattr(self, "edge_importance"):
             self.edge_importance = [nn.Identity()] * len(self.convLayers)
         if not hasattr(self, "ms_layers"):
             self.ms_layers = [nn.Identity()] * len(self.convLayers)
 
+        # Actual forward pass.
         # In: (batch_size, features, time, nodes)
         for layer, res_layer, bn, E, ms_layer in zip(self.convLayers, self.res_layers,
                                                      self.bn_layers, self.edge_importance,
@@ -217,30 +330,37 @@ class TemporalInfoGraph(nn.Module):
             X = self.relu(X)
 
             if self.multi_scale:
-                # In: (batch * persons, features, time, nodes), Out:(batch * persons, features, 1, nodes)
+                # In: (batch * persons, features, time, nodes)
+                # Out:(batch * persons, features, 1, nodes)
                 Z = F.avg_pool2d(X, (X.size()[2], 1))
-                # In: (batch * persons, features, 1, nodes), Out: (batch, features, nodes)
+                # In: (batch * persons, features, 1, nodes)
+                # Out: (batch, features, nodes)
                 Z = torch.squeeze(Z.view(N, M, -1, V).mean(dim=1))
-                # In: (batch, features, nodes), Out: (batch, outfeatures, nodes)
-                Z = ms_layer(Z.view(-1, Z.shape[1])).view(Z.shape[0], -1 ,Z.shape[2])
+                # In: (batch, features, nodes)
+                # Out: (batch, outfeatures, nodes)
+                Z = ms_layer(Z.view(-1, Z.shape[1])).view(Z.shape[0], -1, Z.shape[2])
 
                 concat_scales.append(Z)
 
         if self.mode == "encode":
             # Average over time
-            # In: (batch * persons, features, time, nodes), Out:(batch * persons, features, 1, nodes)
+            # In: (batch * persons, features, time, nodes)
+            # Out:(batch * persons, features, 1, nodes)
             X = self.fcn(X)
             X = F.avg_pool2d(X, (X.size()[2], 1))
+
             # Average over persons
-            # In: (batch, persons, features, 1, nodes), Out:(batch, 1, features, 1, nodes)
+            # In: (batch, persons, features, 1, nodes)
+            # Out:(batch, 1, features, 1, nodes)
             X = X.view(N, M, -1, V).mean(dim=1)
 
-            return torch.squeeze(X.mean(dim=-1)), torch.cat([X, *concat_scales], dim=2) #torch.squeeze(X)
+            return torch.squeeze(X.mean(dim=-1)), torch.cat([X, *concat_scales], dim=2)
 
         elif self.mode == "classify":
             # Average over nodes and time
             # In: (batch * persons, features, time, nodes), Out:(batch * persons, features, 1, 1)
             X = F.avg_pool2d(X, X.size()[2:])
+
             # Average over persons
             # In: (batch, persons, features, 1, nodes), Out:(batch, 1, features, 1, 1)
             X = X.view(N, M, -1, 1, 1).mean(dim=1)
@@ -250,4 +370,3 @@ class TemporalInfoGraph(nn.Module):
 
             # Squeezing alternative
             return X.view(X.size(0), -1)
-
